@@ -26,11 +26,14 @@ import (
 type SnapshotMetadataServiceSpec struct {
 	// The audience string value expected in a client's authentication token passed
 	// in the "security_token" field of each gRPC call.
-	Audience string `json:"audiences,omitempty"`
+	// Required.
+	Audience string `json:"audience"`
 	// The TCP endpoint address of the gRPC service.
-	Address string `json:"address,omitempty"`
+	// Required.
+	Address string `json:"address"`
 	// Certificate authority bundle needed by the client to validate the service.
-	CACert []byte `json:"caCert,omitempty"`
+	// Required.
+	CACert []byte `json:"caCert"`
 }
 
 // +genclient
@@ -44,10 +47,13 @@ type SnapshotMetadataServiceSpec struct {
 // An audience scoped Kubernetes authentication bearer token must be passed in the
 // "security_token" field of each gRPC call made by a Kubernetes backup client.
 type SnapshotMetadataService struct {
-	metav1.TypeMeta   `json:",inline"`
+	metav1.TypeMeta `json:",inline"`
+	// Standard object's metadata.
+	// More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#metadata
+	// +optional
 	metav1.ObjectMeta `json:"metadata,omitempty"`
-
-	Spec SnapshotMetadataServiceSpec `json:"spec,omitempty"`
+	// Required.
+	Spec SnapshotMetadataServiceSpec `json:"spec"`
 }
 
 // +k8s:deepcopy-gen:interfaces=k8s.io/apimachinery/pkg/runtime.Object

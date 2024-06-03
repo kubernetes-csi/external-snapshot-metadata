@@ -44,24 +44,32 @@ spec:
           metadata:
             type: object
           spec:
-            description: |-
-              SnapshotMetadataServiceSpec defines the desired state of SnapshotMetadataService
-              This contains data needed to connect to a Kubernetes SnapshotMetadata gRPC service.
+            description: Required.
             properties:
               address:
-                description: The TCP endpoint address of the gRPC service.
+                description: |-
+                  The TCP endpoint address of the gRPC service.
+                  Required.
                 type: string
-              audiences:
+              audience:
                 description: |-
                   The audience string value expected in a client's authentication token passed
                   in the "security_token" field of each gRPC call.
+                  Required.
                 type: string
               caCert:
-                description: Certificate authority bundle needed by the client to
-                  validate the service.
+                description: |-
+                  Certificate authority bundle needed by the client to validate the service.
+                  Required.
                 format: byte
                 type: string
+            required:
+            - address
+            - audience
+            - caCert
             type: object
+        required:
+        - spec
         type: object
     served: true
     storage: true
