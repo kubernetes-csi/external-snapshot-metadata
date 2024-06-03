@@ -2,6 +2,11 @@ syntax="proto3";
 
 option go_package = "github.com/kubernetes-csi/external-snapshot-metadata/pkg/grpc";
 
+// The proposed Kubernetes SnapshotMetadata API is very similar to the CSI
+// SnapshotMetadata Service API. The only structural differences between the
+// two specifications are in some message properties.
+// Refs: https://github.com/kubernetes/enhancements/blob/ffb78131af83279b8852ae742ca60ff81498eecd/keps/sig-storage/3314-csi-changed-block-tracking/README.md#the-csi-snapshotmetadata-service-api
+// https://github.com/container-storage-interface/spec/pull/551
 service SnapshotMetadata {
   rpc GetMetadataAllocated(GetMetadataAllocatedRequest)
     returns (stream GetMetadataAllocatedResponse) {}
@@ -27,12 +32,12 @@ message BlockMetadata {
   // This is the zero based byte position in the volume or snapshot,
   // measured from the start of the object.
   // This field is REQUIRED.
-  uint64 byte_offset = 1;
+  int64 byte_offset = 1;
 
   // This is the size of the data range.
-  // size_bytes MUST be greater than zero.
+  // size_bytes will be greater than zero.
   // This field is REQUIRED.
-  uint64 size_bytes = 2;
+  int64 size_bytes = 2;
 }
 
 // The GetMetadataAllocatedRequest message is used to solicit metadata
@@ -45,8 +50,8 @@ message GetMetadataAllocatedRequest {
   // This field is REQUIRED.
   string security_token = 1;
 
-  // This field indicates the Kubernetes namespace where the VolumeSnapshot exists.
-  // If not set, the VolumeSnapshot will be looked for in the "default" namespace.
+  // This field indicates the Namespace where the VolumeSnapshot exists.
+  // If not set, the VolumeSnapshot will be looked for in the "default" Namespace.
   // This field is OPTIONAL.
   string namespace = 2;
 
@@ -62,19 +67,24 @@ message GetMetadataAllocatedRequest {
   // The client SHOULD specify this value to be the offset of the byte
   // position immediately after the last byte of the last data range
   // received, if continuing an interrupted operation, or zero if not.
+  // The sidecar will ensure that the returned response stream does not
+  // contain BlockMetadata tuples that end before the requested
+  // starting_offset: i.e. if S is the requested starting_offset, and
+  // B0 is block_metadata[0] of the first message in the response
+  // stream, then (S < B0.byte_offset + B0.size_bytes) will be true.
   // This field is REQUIRED.
-  uint64 starting_offset = 4;
+  int64 starting_offset = 4;
 
   // This is an optional parameter, and if non-zero it specifies the
   // maximum number of tuples to be returned in each
   // GetMetadataAllocatedResponse message returned by the RPC stream.
-  // The plugin will determine an appropriate value if 0, and is
+  // The sidecar will determine an appropriate value if 0, and is
   // always free to send less than the requested value.
   // This field is OPTIONAL.
-  uint32 max_results = 5;
+  int32 max_results = 5;
 }
 
-// GetMetadataAllocatedResponse messages are returned in gRPC stream.
+// GetMetadataAllocatedResponse messages are returned in a gRPC stream.
 // Cumulatively, they provide information on the allocated data
 // ranges in the snapshot.
 message GetMetadataAllocatedResponse {
@@ -82,20 +92,28 @@ message GetMetadataAllocatedResponse {
   // This value must be the same in all such messages returned by
   // the stream.
   // If block_metadata_type is FIXED_LENGTH, then the size_bytes field
-  // of each message in the block_metadata list MUST be constant.
+  // of each message in the block_metadata list will be constant.
   // This field is REQUIRED.
   BlockMetadataType block_metadata_type = 1;
 
-  // This returns the size of the underlying volume.
+  // This returns the capacity of the underlying volume in bytes.
   // This value must be the same in all such messages returned by
   // the stream.
   // This field is REQUIRED.
-  uint64 volume_size_bytes = 2;
+  int64 volume_capacity_bytes = 2;
 
   // This is a list of data range tuples.
-  // If the value of max_results in the GetMetadataDeltaRequest message
-  // is greater than zero, then the number of entries in this list MUST
-  // be less than or equal to that value.
+  // If the value of max_results in the GetMetadataAllocatedRequest
+  // message is greater than zero, then the number of entries in this
+  // list will be less than or equal to that value.
+  // The sidecar will respect the value of starting_offset in the request.
+  // The byte_offset fields of adjacent BlockMetadata messages
+  // Will be strictly increasing and messages will not overlap:
+  // i.e. for any two BlockMetadata messages, A and B, if A is returned
+  // before B, then (A.byte_offset + A.size_bytes <= B.byte_offset)
+  // will be true.
+  // This will also be true if A and B are from block_metadata lists in
+  // different GetMetadataAllocatedResponse messages in the gRPC stream.
   // This field is OPTIONAL.
   repeated BlockMetadata block_metadata = 3;
 }
@@ -108,8 +126,8 @@ message GetMetadataDeltaRequest {
   // This field is REQUIRED.
   string security_token = 1;
 
-  // This field indicates the Kubernetes namespace where the VolumeSnapshot exists.
-  // If not set, the VolumeSnapshot will be looked for in the "default" namespace.
+  // This field indicates the Namespace where the VolumeSnapshot exists.
+  // If not set, the VolumeSnapshot will be looked for in the "default" Namespace.
   // This field is OPTIONAL.
   string namespace = 2;
 
@@ -130,19 +148,24 @@ message GetMetadataDeltaRequest {
   // The client SHOULD specify this value to be the offset of the byte
   // position immediately after the last byte of the last data range
   // received, if continuing an interrupted operation, or zero if not.
+  // The sidecar will ensure that the returned response stream does not
+  // contain BlockMetadata tuples that end before the requested
+  // starting_offset: i.e. if S is the requested starting_offset, and
+  // B0 is block_metadata[0] of the first message in the response
+  // stream, then (S < B0.byte_offset + B0.size_bytes) will be true.
   // This field is REQUIRED.
-  uint64 starting_offset = 5;
+  int64 starting_offset = 5;
 
   // This is an optional parameter, and if non-zero it specifies the
   // maximum number of tuples to be returned in each
-  // GetMetadataAllocatedResponse message returned by the RPC stream.
-  // The plugin will determine an appropriate value if 0, and is
+  // GetMetadataDeltaResponse message returned by the RPC stream.
+  // The sidecar will determine an appropriate value if 0, and is
   // always free to send less than the requested value.
   // This field is OPTIONAL.
-  uint32 max_results = 6;
+  int32 max_results = 6;
 }
 
-// GetMetadataDeltaResponse messages are returned in gRPC stream.
+// GetMetadataDeltaResponse messages are returned in a gRPC stream.
 // Cumulatively, they provide information on the data ranges that
 // have changed between the base and target snapshots specified
 // in the GetMetadataDeltaRequest message.
@@ -151,20 +174,28 @@ message GetMetadataDeltaResponse {
   // This value must be the same in all such messages returned by
   // the stream.
   // If block_metadata_type is FIXED_LENGTH, then the size_bytes field
-  // of each message in the block_metadata list MUST be constant.
+  // of each message in the block_metadata list will be constant.
   // This field is REQUIRED.
   BlockMetadataType block_metadata_type = 1;
 
-  // This returns the size of the underlying volume.
+  // This returns the capacity of the underlying volume in bytes.
   // This value must be the same in all such messages returned by
   // the stream.
   // This field is REQUIRED.
-  uint64 volume_size_bytes = 2;
+  int64 volume_capacity_bytes = 2;
 
   // This is a list of data range tuples.
   // If the value of max_results in the GetMetadataDeltaRequest message
-  // is greater than zero, then the number of entries in this list MUST
+  // is greater than zero, then the number of entries in this list will
   // be less than or equal to that value.
+  // The sidecar will respect the value of starting_offset in the request.
+  // The byte_offset fields of adjacent BlockMetadata messages
+  // Will be strictly increasing and messages will not overlap:
+  // i.e. for any two BlockMetadata messages, A and B, if A is returned
+  // before B, then (A.byte_offset + A.size_bytes <= B.byte_offset)
+  // will be true.
+  // This will also be true if A and B are from block_metadata lists in
+  // different GetMetadataDeltaResponse messages in the gRPC stream.
   // This field is OPTIONAL.
   repeated BlockMetadata block_metadata = 3;
 }
