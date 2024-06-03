@@ -67,4 +67,25 @@ Follow these steps to update the CRD:
 
 ## Test suite 
 
-// TODO: Add CEL tests
+The `test-suite` directory contains several test cases that are useful to
+validate if the CEL rules that are included in the CRD definitions
+are correctly working.
+
+### Prerequisites
+
+- Kubectl access to a cluster with the installed CRDs
+- Kubernetes >= 1.30
+
+### How to use it
+
+```
+  ./hack/run-cel-tests.sh
+
+  cel-tests/snapshotmetadataservice/sms_empty_cacert.yaml: SUCCESS (expected failure)
+  cel-tests/snapshotmetadataservice/sms.yaml: SUCCESS
+  cel-tests/snapshotmetadataservice/sms_empty_audience.yaml: SUCCESS (expected failure)
+  cel-tests/snapshotmetadataservice/sms_empty_address.yaml: SUCCESS (expected failure)
+
+  SUCCESS: 4
+  FAILURES: 0
+```
