@@ -12,7 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+# Protect against invocation without a specific target.
+all:
+
 .PHONY: proto
+# Build the Kubernetes SnapshotMetadata gRPC Service Go stubs.
 proto:
 	protoc -I=proto \
 		--go_out=pkg/grpc --go_opt=paths=source_relative \
