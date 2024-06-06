@@ -1,4 +1,5 @@
 syntax="proto3";
+package snapshotmetadata;
 
 option go_package = "github.com/kubernetes-csi/external-snapshot-metadata/pkg/grpc";
 
@@ -52,7 +53,7 @@ message GetMetadataAllocatedRequest {
 
   // This field indicates the Namespace where the VolumeSnapshot exists.
   // If not set, the VolumeSnapshot will be looked for in the "default" Namespace.
-  // This field is OPTIONAL.
+  // This field is REQUIRED.
   string namespace = 2;
 
   // This is the VolumeSnapshot object name against which changes
@@ -128,7 +129,7 @@ message GetMetadataDeltaRequest {
 
   // This field indicates the Namespace where the VolumeSnapshot exists.
   // If not set, the VolumeSnapshot will be looked for in the "default" Namespace.
-  // This field is OPTIONAL.
+  // This field is REQUIRED.
   string namespace = 2;
 
   // This is the VolumeSnapshot object name against which changes

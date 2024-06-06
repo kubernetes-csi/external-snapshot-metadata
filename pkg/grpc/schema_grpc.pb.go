@@ -35,7 +35,7 @@ func NewSnapshotMetadataClient(cc grpc.ClientConnInterface) SnapshotMetadataClie
 }
 
 func (c *snapshotMetadataClient) GetMetadataAllocated(ctx context.Context, in *GetMetadataAllocatedRequest, opts ...grpc.CallOption) (SnapshotMetadata_GetMetadataAllocatedClient, error) {
-	stream, err := c.cc.NewStream(ctx, &SnapshotMetadata_ServiceDesc.Streams[0], "/SnapshotMetadata/GetMetadataAllocated", opts...)
+	stream, err := c.cc.NewStream(ctx, &SnapshotMetadata_ServiceDesc.Streams[0], "/snapshotmetadata.SnapshotMetadata/GetMetadataAllocated", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -67,7 +67,7 @@ func (x *snapshotMetadataGetMetadataAllocatedClient) Recv() (*GetMetadataAllocat
 }
 
 func (c *snapshotMetadataClient) GetMetadataDelta(ctx context.Context, in *GetMetadataDeltaRequest, opts ...grpc.CallOption) (SnapshotMetadata_GetMetadataDeltaClient, error) {
-	stream, err := c.cc.NewStream(ctx, &SnapshotMetadata_ServiceDesc.Streams[1], "/SnapshotMetadata/GetMetadataDelta", opts...)
+	stream, err := c.cc.NewStream(ctx, &SnapshotMetadata_ServiceDesc.Streams[1], "/snapshotmetadata.SnapshotMetadata/GetMetadataDelta", opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -176,7 +176,7 @@ func (x *snapshotMetadataGetMetadataDeltaServer) Send(m *GetMetadataDeltaRespons
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var SnapshotMetadata_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "SnapshotMetadata",
+	ServiceName: "snapshotmetadata.SnapshotMetadata",
 	HandlerType: (*SnapshotMetadataServer)(nil),
 	Methods:     []grpc.MethodDesc{},
 	Streams: []grpc.StreamDesc{
