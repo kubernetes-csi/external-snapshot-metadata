@@ -1,5 +1,5 @@
 /*
-Copyright 2019 The Kubernetes Authors.
+Copyright 2024 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -86,8 +86,9 @@ func TestCSICheckDriver(t *testing.T) {
 		if err != nil {
 			t.Fatal("csiCheckDriver", err)
 		}
-
-		t.Log(rc.driverName)
+		if rc.driverName != expDriverName {
+			t.Fatal("driverName not valid", rc.driverName)
+		}
 	})
 
 }
