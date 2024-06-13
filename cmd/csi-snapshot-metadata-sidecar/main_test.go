@@ -103,7 +103,6 @@ func TestClientInit(t *testing.T) {
 			t.Fatal("Burst not set")
 		}
 	})
-
 }
 
 func TestCSICheckDriver(t *testing.T) {
