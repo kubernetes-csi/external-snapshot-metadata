@@ -50,7 +50,7 @@ var (
 	kubeAPIQPS   = flag.Float64("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
 
-	httpEndpoint = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled. Only one of `--metrics-address` and `--http-endpoint` can be set.")
+	httpEndpoint = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled.")
 	metricsPath  = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
 )
 
@@ -70,37 +70,54 @@ func main() {
 
 	klog.Infof("Version: %s", version)
 
-	rc := runtimeConfig{}
+	ss := SidecarService{}
 
-	if err := rc.kubeConnect(*kubeconfig, float32(*kubeAPIQPS), *kubeAPIBurst); err != nil {
-		os.Exit(1)
-	}
-
-	if err := rc.csiConnect(*csiAddress); err != nil {
+	if err := ss.ClientInit(*kubeconfig, float32(*kubeAPIQPS), *kubeAPIBurst, *csiAddress); err != nil {
+		klog.Error(err)
 		os.Exit(1)
 	}
 
 	ctx, cancel := context.WithTimeout(context.Background(), *csiTimeout)
 	defer cancel()
 
-	if err := rc.csiCheckDriver(ctx); err != nil {
+	if err := ss.CSICheckDriver(ctx, ss.CSIConn); err != nil {
+		klog.Error(err)
 		os.Exit(1)
 	}
 
-	klog.V(2).Infof("CSI driver name: %q", rc.driverName)
+	klog.Infof("CSI driver name: %q", ss.DriverName)
 
+	// TBD: initialize and start the SnapshotMetadata service
 }
 
-type runtimeConfig struct {
-	config     *rest.Config
-	kubeClient *kubernetes.Clientset
-	csiConn    *grpc.ClientConn
-	driverName string
+type SidecarService struct {
+	Config     *rest.Config
+	KubeClient *kubernetes.Clientset
+	CSIConn    *grpc.ClientConn
+	DriverName string
+}
+
+// ClientInit creates a K8s client and also connects to the CSI driver.
+func (ss *SidecarService) ClientInit(
+	kubeconfig string,
+	kubeAPIQPS float32,
+	kubeAPIBurst int,
+	csiAddress string,
+) error {
+	if err := ss.kubeConnect(kubeconfig, kubeAPIQPS, kubeAPIBurst); err != nil {
+		return err
+	}
+
+	if err := ss.csiConnect(csiAddress); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // kubeConnect creates the client config and creates the Kubernets client.
-// It uses the specified kubeconfig if not empty, otherwise assume in-cluster.
-func (rc *runtimeConfig) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBurst int) error {
+// It uses the specified kubeconfig if not empty, otherwise assumes an in-cluster invocation.
+func (ss *SidecarService) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBurst int) error {
 	var (
 		config *rest.Config
 		err    error
@@ -108,14 +125,12 @@ func (rc *runtimeConfig) kubeConnect(kubeconfig string, kubeAPIQPS float32, kube
 
 	if kubeconfig != "" {
 		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
-			klog.Errorf("error building config: %v", err)
-			return err
+			return fmt.Errorf("error in kubeconfig: %w", err)
 		}
-	}
-
-	if config, err = rest.InClusterConfig(); err != nil {
-		klog.Errorf("error getting in-cluster config: %v", err)
-		return err
+	} else {
+		if config, err = rest.InClusterConfig(); err != nil {
+			return fmt.Errorf("error in cluster configuration: %w", err)
+		}
 	}
 
 	config.QPS = kubeAPIQPS
@@ -123,18 +138,17 @@ func (rc *runtimeConfig) kubeConnect(kubeconfig string, kubeAPIQPS float32, kube
 
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		klog.Errorf("error getting client: %v", err)
-		return err
+		return fmt.Errorf("error creating kube client: %w", err)
 	}
 
-	rc.config = config
-	rc.kubeClient = kubeClient
+	ss.Config = config
+	ss.KubeClient = kubeClient
 
 	return nil
 }
 
 // csiConnect establishes a connection to the CSI driver.
-func (rc *runtimeConfig) csiConnect(csiAddress string) error {
+func (ss *SidecarService) csiConnect(csiAddress string) error {
 	ctx := context.Background()
 
 	metricsManager := metrics.NewCSIMetricsManager("" /* driverName */)
@@ -144,42 +158,39 @@ func (rc *runtimeConfig) csiConnect(csiAddress string) error {
 		metricsManager,
 		connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
 	if err != nil {
-		klog.Errorf("error connecting to CSI driver: %v", err)
-		return err
+		return fmt.Errorf("error connecting to CSI driver: %w", err)
 	}
 
-	rc.csiConn = csiConn
+	ss.CSIConn = csiConn
 
 	return nil
 }
 
-// csiCheckDriver obtains the CSI driver name and confirms that it supports the
-// snapshot metadata service
-func (rc *runtimeConfig) csiCheckDriver(ctx context.Context) error {
+// CSICheckDriver obtains the CSI driver name and confirms that it supports the
+// snapshot metadata service.
+func (ss *SidecarService) CSICheckDriver(ctx context.Context, csiConn *grpc.ClientConn) error {
 	// Find driver name
-	driverName, err := csirpc.GetDriverName(ctx, rc.csiConn)
+	driverName, err := csirpc.GetDriverName(ctx, csiConn)
 	if err != nil {
-		klog.Errorf("error getting CSI driver name: %v", err)
-		return err
+		return fmt.Errorf("error getting CSI driver name: %w", err)
 	}
 
 	// TODO
 	// - Wait for driver to be ready
 
-	pcs, err := csirpc.GetPluginCapabilities(ctx, rc.csiConn)
+	pcs, err := csirpc.GetPluginCapabilities(ctx, csiConn)
 	if err != nil {
-		klog.Errorf("error getting CSI plugin capabilities: %v", err)
-		return err
+		return fmt.Errorf("error getting CSI plugin capabilities: %w", err)
 	}
 
-	// Require a release with the spec and csi-test updated
+	// TODO: Require a release with the spec and csi-test updated to uncomment this code.
 	// if _, found := pcs[csi.PluginCapability_Service_SNAPSHOT_METADATA_SERVICE]; !found {
 	// 	klog.Errorf("CSI driver %s does not support the SNAPSHOT_METADATA_SERVICE", driverName)
 	// 	return errors.New("SNAPSHOT_METADATA_SERVICE not supported")
 	// }
 	_ = pcs // fake a reference to compile
 
-	rc.driverName = driverName
+	ss.DriverName = driverName
 
 	return nil
 }
