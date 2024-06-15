@@ -17,22 +17,14 @@ limitations under the License.
 package main
 
 import (
-	"context"
 	"flag"
 	"fmt"
 	"os"
 	"time"
 
-	"google.golang.org/grpc"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/runtime"
 
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/clientcmd"
 	klog "k8s.io/klog/v2"
-
-	"github.com/kubernetes-csi/csi-lib-utils/connection"
-	"github.com/kubernetes-csi/csi-lib-utils/metrics"
-	csirpc "github.com/kubernetes-csi/csi-lib-utils/rpc"
 )
 
 const (
@@ -70,127 +62,33 @@ func main() {
 
 	klog.Infof("Version: %s", version)
 
-	ss := SidecarService{}
-
-	if err := ss.ClientInit(*kubeconfig, float32(*kubeAPIQPS), *kubeAPIBurst, *csiAddress); err != nil {
+	// create the runtime clients.
+	// TODO: set up the HTTP server.
+	rt, err := runtime.New(runtime.Args{
+		CSIAddress:   *csiAddress,
+		CSITimeout:   *csiTimeout,
+		KubeAPIBurst: *kubeAPIBurst,
+		KubeAPIQPS:   (float32)(*kubeAPIQPS),
+		Kubeconfig:   *kubeconfig,
+	})
+	if err != nil {
 		klog.Error(err)
 		os.Exit(1)
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), *csiTimeout)
-	defer cancel()
+	klog.Infof("CSI driver name: %q", rt.DriverName)
 
-	if err := ss.CSICheckDriver(ctx, ss.CSIConn); err != nil {
+	// TBD
+	// May need to exposed metric and healthz HTTP end points
+	// here because the wait for the CSI driver is open ended.
+	// If so, may need to initialize and start the SnapshotMetadata gRPC service
+	// also, but they should be made to fail until the driver is validated.
+
+	// check for a compatible CSI driver.
+	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
 		klog.Error(err)
 		os.Exit(1)
 	}
 
-	klog.Infof("CSI driver name: %q", ss.DriverName)
-
-	// TBD: initialize and start the SnapshotMetadata service
-}
-
-type SidecarService struct {
-	Config     *rest.Config
-	KubeClient *kubernetes.Clientset
-	CSIConn    *grpc.ClientConn
-	DriverName string
-}
-
-// ClientInit creates a K8s client and also connects to the CSI driver.
-func (ss *SidecarService) ClientInit(
-	kubeconfig string,
-	kubeAPIQPS float32,
-	kubeAPIBurst int,
-	csiAddress string,
-) error {
-	if err := ss.kubeConnect(kubeconfig, kubeAPIQPS, kubeAPIBurst); err != nil {
-		return err
-	}
-
-	if err := ss.csiConnect(csiAddress); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-// kubeConnect creates the client config and creates the Kubernets client.
-// It uses the specified kubeconfig if not empty, otherwise assumes an in-cluster invocation.
-func (ss *SidecarService) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBurst int) error {
-	var (
-		config *rest.Config
-		err    error
-	)
-
-	if kubeconfig != "" {
-		if config, err = clientcmd.BuildConfigFromFlags("", kubeconfig); err != nil {
-			return fmt.Errorf("error in kubeconfig: %w", err)
-		}
-	} else {
-		if config, err = rest.InClusterConfig(); err != nil {
-			return fmt.Errorf("error in cluster configuration: %w", err)
-		}
-	}
-
-	config.QPS = kubeAPIQPS
-	config.Burst = kubeAPIBurst
-
-	kubeClient, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		return fmt.Errorf("error creating kube client: %w", err)
-	}
-
-	ss.Config = config
-	ss.KubeClient = kubeClient
-
-	return nil
-}
-
-// csiConnect establishes a connection to the CSI driver.
-func (ss *SidecarService) csiConnect(csiAddress string) error {
-	ctx := context.Background()
-
-	metricsManager := metrics.NewCSIMetricsManager("" /* driverName */)
-	csiConn, err := connection.Connect(
-		ctx,
-		csiAddress,
-		metricsManager,
-		connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
-	if err != nil {
-		return fmt.Errorf("error connecting to CSI driver: %w", err)
-	}
-
-	ss.CSIConn = csiConn
-
-	return nil
-}
-
-// CSICheckDriver obtains the CSI driver name and confirms that it supports the
-// snapshot metadata service.
-func (ss *SidecarService) CSICheckDriver(ctx context.Context, csiConn *grpc.ClientConn) error {
-	// Find driver name
-	driverName, err := csirpc.GetDriverName(ctx, csiConn)
-	if err != nil {
-		return fmt.Errorf("error getting CSI driver name: %w", err)
-	}
-
-	// TODO
-	// - Wait for driver to be ready
-
-	pcs, err := csirpc.GetPluginCapabilities(ctx, csiConn)
-	if err != nil {
-		return fmt.Errorf("error getting CSI plugin capabilities: %w", err)
-	}
-
-	// TODO: Require a release with the spec and csi-test updated to uncomment this code.
-	// if _, found := pcs[csi.PluginCapability_Service_SNAPSHOT_METADATA_SERVICE]; !found {
-	// 	klog.Errorf("CSI driver %s does not support the SNAPSHOT_METADATA_SERVICE", driverName)
-	// 	return errors.New("SNAPSHOT_METADATA_SERVICE not supported")
-	// }
-	_ = pcs // fake a reference to compile
-
-	ss.DriverName = driverName
-
-	return nil
+	// run until terminated
 }
