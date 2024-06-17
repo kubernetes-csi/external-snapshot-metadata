@@ -17,78 +17,18 @@ limitations under the License.
 package main
 
 import (
-	"flag"
-	"fmt"
 	"os"
-	"time"
 
-	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/runtime"
-
-	klog "k8s.io/klog/v2"
-)
-
-const (
-	// Default timeout of short CSI calls like GetPluginInfo.
-	defaultCSITimeout = time.Minute
-)
-
-// Command line flags.
-var (
-	kubeconfig  = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
-	csiAddress  = flag.String("csi-address", "/run/csi/socket", "Address of the CSI driver socket.")
-	showVersion = flag.Bool("version", false, "Show version.")
-	csiTimeout  = flag.Duration("timeout", defaultCSITimeout, "The timeout for any RPCs to the CSI driver. Default is 1 minute.")
-
-	kubeAPIQPS   = flag.Float64("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
-	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
-
-	httpEndpoint = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled.")
-	metricsPath  = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/sidecar"
 )
 
 var (
+	// Version gets set via the https://pkg.go.dev/cmd/link -X flag in the build scripts.
 	version = "unknown"
 )
 
 func main() {
-	klog.InitFlags(nil)
-	flag.Set("logtostderr", "true")
-	flag.Parse()
+	rc := sidecar.Run(version)
 
-	if *showVersion {
-		fmt.Println(os.Args[0], version)
-		os.Exit(0)
-	}
-
-	klog.Infof("Version: %s", version)
-
-	// create the runtime clients.
-	// TODO: set up the HTTP server.
-	rt, err := runtime.New(runtime.Args{
-		CSIAddress:   *csiAddress,
-		CSITimeout:   *csiTimeout,
-		KubeAPIBurst: *kubeAPIBurst,
-		KubeAPIQPS:   (float32)(*kubeAPIQPS),
-		Kubeconfig:   *kubeconfig,
-	})
-	if err != nil {
-		klog.Error(err)
-		os.Exit(1)
-	}
-
-	klog.Infof("CSI driver name: %q", rt.DriverName)
-
-	// TBD
-	// May need to exposed metric and healthz HTTP end points
-	// here because the wait for the CSI driver is open ended.
-	// If so, may need to initialize and start the SnapshotMetadata gRPC service
-	// also, but they should be made to fail until the driver is validated.
-
-	// check for a compatible CSI driver.
-	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
-		klog.Error(err)
-		os.Exit(1)
-	}
-
-	// run until terminated
+	os.Exit(rc)
 }
