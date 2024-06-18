@@ -3,7 +3,7 @@ package snapshotmetadata;
 
 option go_package = "github.com/kubernetes-csi/external-snapshot-metadata/pkg/grpc";
 
-// The proposed Kubernetes SnapshotMetadata API is very similar to the CSI
+// The Kubernetes SnapshotMetadata API is very similar to the CSI
 // SnapshotMetadata Service API. The only structural differences between the
 // two specifications are in some message properties.
 // Refs: https://github.com/kubernetes/enhancements/blob/ffb78131af83279b8852ae742ca60ff81498eecd/keps/sig-storage/3314-csi-changed-block-tracking/README.md#the-csi-snapshotmetadata-service-api
