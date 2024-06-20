@@ -8,14 +8,11 @@ require (
 	github.com/golang/mock v1.6.0
 	github.com/kubernetes-csi/csi-lib-utils v0.18.0
 	github.com/kubernetes-csi/csi-test/v5 v5.2.0
+	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.64.0
+	google.golang.org/protobuf v1.34.1
 	k8s.io/client-go v0.30.0
 	k8s.io/klog/v2 v2.120.1
-)
-
-require (
-	github.com/stretchr/testify v1.8.4
-	google.golang.org/protobuf v1.34.1
 )
 
 require (
