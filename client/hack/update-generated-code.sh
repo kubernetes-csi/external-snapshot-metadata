@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # Copyright 2024 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
@@ -12,18 +14,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-# Protect against invocation without a specific target.
-all:
+set -o errexit
+set -o nounset
+set -o pipefail
 
-.PHONY: proto
-# Build the Kubernetes SnapshotMetadata gRPC Service Go stubs.
-proto:
-	protoc -I=proto \
-		--go_out=pkg/grpc --go_opt=paths=source_relative \
-		--go-grpc_out=pkg/grpc --go-grpc_opt=paths=source_relative \
-		proto/*.proto
+SCRIPT_ROOT=$(unset CDPATH && cd $(dirname "${BASH_SOURCE[0]}")/.. && pwd)
 
-.PHONY: crd
-# Generate CRD manifest using controller-gen
-crd:
-	@ cd client && ./hack/update-crd.sh
+source "${GOPATH}/src/k8s.io/code-generator/kube_codegen.sh"
+
+kube::codegen::gen_helpers \
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+    "${SCRIPT_ROOT}/apis"
+
+kube::codegen::gen_client \
+    --output-dir "${SCRIPT_ROOT}" \
+    --output-pkg "github.com/kubernetes-csi/external-snapshot-metadata/client" \
+    --boilerplate "${SCRIPT_ROOT}/hack/boilerplate.go.txt" \
+    --with-watch \
+    "${SCRIPT_ROOT}/apis"
