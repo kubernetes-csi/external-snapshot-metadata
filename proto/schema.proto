@@ -1,7 +1,7 @@
 syntax="proto3";
 package snapshotmetadata;
 
-option go_package = "github.com/kubernetes-csi/external-snapshot-metadata/pkg/grpc";
+option go_package = "github.com/kubernetes-csi/external-snapshot-metadata/pkg/api";
 
 // The Kubernetes SnapshotMetadata API is very similar to the CSI
 // SnapshotMetadata Service API. The only structural differences between the
