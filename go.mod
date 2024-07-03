@@ -16,6 +16,11 @@ require (
 )
 
 require (
+	github.com/stretchr/testify v1.8.4
+	google.golang.org/protobuf v1.34.1
+)
+
+require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/blang/semver/v4 v4.0.0 // indirect
 	github.com/cespare/xxhash/v2 v2.2.0 // indirect
