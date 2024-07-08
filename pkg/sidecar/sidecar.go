@@ -23,6 +23,7 @@ import (
 	"time"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/server/grpc"
 
 	klog "k8s.io/klog/v2"
 )
@@ -30,6 +31,11 @@ import (
 const (
 	// Default timeout of short CSI calls like GetPluginInfo.
 	defaultCSITimeout = time.Minute
+
+	// tlsCertEnvVar is an environment variable that specifies the path to tls certificate file.
+	tlsCertEnvVar = "TLS_CERT_PATH"
+	// tlsKeyEnvVar is an environment variable that specifies the path to tls private key file.
+	tlsKeyEnvVar = "TLS_KEY_PATH"
 )
 
 // Command line flags.
@@ -38,6 +44,10 @@ var (
 	csiAddress  = flag.String("csi-address", "/run/csi/socket", "Address of the CSI driver socket.")
 	showVersion = flag.Bool("version", false, "Show version.")
 	csiTimeout  = flag.Duration("timeout", defaultCSITimeout, "The timeout for any RPCs to the CSI driver. Default is 1 minute.")
+
+	port    = flag.Int("port", 50051, "Port number to listen on for SnapshotMetadata service")
+	tlsCert = flag.String("tls-cert", os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file.")
+	tlsKey  = flag.String("tls-key", os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file.")
 
 	kubeAPIQPS   = flag.Float64("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
@@ -82,13 +92,22 @@ func Run(version string) int {
 	// If so, may need to initialize and start the SnapshotMetadata gRPC service
 	// also, but they should be made to fail until the driver is validated.
 
+	// run grpc server until terminated
+	server, err := grpc.NewServer(rt.KubeClient, grpc.ServerConfig{
+		Port:        *port,
+		TLSCertFile: *tlsCert,
+		TLSKeyFile:  *tlsKey,
+	})
+	if err != nil {
+		klog.Fatalf("Failed to start GRPC server: %v", err)
+	}
+	go server.Start()
+
 	// check for a compatible CSI driver.
 	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
 		klog.Error(err)
 		return 1
 	}
-
-	// run until terminated
 
 	return 0
 }
