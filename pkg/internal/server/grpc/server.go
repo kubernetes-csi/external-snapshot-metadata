@@ -18,6 +18,7 @@ package grpc
 
 import (
 	"crypto/tls"
+	"fmt"
 	"net"
 	"os"
 	"os/signal"
@@ -25,9 +26,7 @@ import (
 	"syscall"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/status"
 	"k8s.io/client-go/kubernetes"
 	klog "k8s.io/klog/v2"
 
@@ -73,7 +72,7 @@ func buildOptions(config ServerConfig) ([]grpc.ServerOption, error) {
 func buildTLSOption(cert, key string) (grpc.ServerOption, error) {
 	serverCert, err := tls.LoadX509KeyPair(cert, key)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("failed to load tls certificates: %v", err)
 	}
 	config := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
@@ -91,7 +90,7 @@ func (s *Server) Start() {
 	s.registerService()
 
 	go func() {
-		klog.Info("csi-snapshot-metadata sidecar server started!")
+		klog.Info("csi-snapshot-metadata sidecar GRPC server started listening of port :", s.config.Port)
 		if err := s.grpcServer.Serve(listener); err != nil {
 			klog.Fatalf("failed to start grpc server: %v", err)
 		}
@@ -105,40 +104,4 @@ func (s *Server) Start() {
 	<-sigCh
 	klog.Info("gracefully shutting down")
 	s.grpcServer.GracefulStop()
-}
-
-func (s *Server) registerService() {
-	api.RegisterSnapshotMetadataServer(s.grpcServer, s)
-}
-
-func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stream api.SnapshotMetadata_GetMetadataAllocatedServer) error {
-	// validate request
-	if len(req.GetSecurityToken()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "securityToken is missing")
-	}
-	if len(req.GetNamespace()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "namespace parameter cannot be empty")
-	}
-	if len(req.GetSnapshotName()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "snapshotName cannot be empty")
-	}
-	// TODO: Add requst authn/authz and business logic
-	return nil
-}
-func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
-	// validate request
-	if len(req.GetSecurityToken()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "securityToken is missing")
-	}
-	if len(req.GetNamespace()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "namespace parameter cannot be empty")
-	}
-	if len(req.GetBaseSnapshotName()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "baseSnapshotName cannot be empty")
-	}
-	if len(req.GetTargetSnapshotName()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "targetSnapshotName cannot be empty")
-	}
-	// TODO: Add requst authn/authz and business logic
-	return nil
 }

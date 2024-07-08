@@ -92,12 +92,6 @@ func Run(version string) int {
 	// If so, may need to initialize and start the SnapshotMetadata gRPC service
 	// also, but they should be made to fail until the driver is validated.
 
-	// check for a compatible CSI driver.
-	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
-		klog.Error(err)
-		return 1
-	}
-
 	// run grpc server until terminated
 	server, err := grpc.NewServer(rt.KubeClient, grpc.ServerConfig{
 		Port:        *port,
@@ -105,9 +99,15 @@ func Run(version string) int {
 		TLSKeyFile:  *tlsKey,
 	})
 	if err != nil {
-		klog.Fatalf("failed to start server: %v", err)
+		klog.Fatalf("Failed to start GRPC server: %v", err)
 	}
-	server.Start()
+	go server.Start()
+
+	// check for a compatible CSI driver.
+	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
+		klog.Error(err)
+		return 1
+	}
 
 	return 0
 }
