@@ -22,10 +22,10 @@ import (
 	"os"
 	"time"
 
+	klog "k8s.io/klog/v2"
+
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/server/grpc"
-
-	klog "k8s.io/klog/v2"
 )
 
 const (
