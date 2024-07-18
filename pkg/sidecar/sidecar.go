@@ -93,11 +93,15 @@ func Run(version string) int {
 	// also, but they should be made to fail until the driver is validated.
 
 	// run grpc server until terminated
-	server, err := grpc.NewServer(rt.KubeClient, grpc.ServerConfig{
-		Port:        *port,
-		TLSCertFile: *tlsCert,
-		TLSKeyFile:  *tlsKey,
-	})
+	server, err := grpc.NewServer(
+		rt.KubeClient,
+		rt.CBTClient,
+		rt.DriverName,
+		grpc.ServerConfig{
+			Port:        *port,
+			TLSCertFile: *tlsCert,
+			TLSKeyFile:  *tlsKey,
+		})
 	if err != nil {
 		klog.Fatalf("Failed to start GRPC server: %v", err)
 	}

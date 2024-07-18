@@ -130,6 +130,7 @@ func TestNew(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, rt)
 		assert.NotNil(t, rt.KubeClient)
+		assert.NotNil(t, rt.CBTClient)
 		assert.NotNil(t, rt.Config)
 		assert.Equal(t, expArgs.KubeAPIQPS, rt.Config.QPS)
 		assert.Equal(t, expArgs.KubeAPIBurst, rt.Config.Burst)

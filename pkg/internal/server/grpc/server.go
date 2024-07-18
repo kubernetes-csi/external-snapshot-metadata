@@ -17,6 +17,7 @@ limitations under the License.
 package grpc
 
 import (
+	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -26,11 +27,19 @@ import (
 	"syscall"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
+	authv1 "k8s.io/api/authentication/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	kauthorizer "k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/kubernetes"
 	klog "k8s.io/klog/v2"
 
+	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/authn"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/authz"
 )
 
 type ServerConfig struct {
@@ -43,10 +52,17 @@ type Server struct {
 	api.UnimplementedSnapshotMetadataServer
 	grpcServer *grpc.Server
 	config     ServerConfig
-	KubeCli    kubernetes.Interface
+	kubeClient kubernetes.Interface
+	cbtClient  cbt.Interface
+	driverName string
 }
 
-func NewServer(kubeCli kubernetes.Interface, config ServerConfig) (*Server, error) {
+func NewServer(
+	kubeClient kubernetes.Interface,
+	cbtClient cbt.Interface,
+	driverName string,
+	config ServerConfig,
+) (*Server, error) {
 	options, err := buildOptions(config)
 	if err != nil {
 		return nil, err
@@ -55,7 +71,9 @@ func NewServer(kubeCli kubernetes.Interface, config ServerConfig) (*Server, erro
 	return &Server{
 		grpcServer: server,
 		config:     config,
-		KubeCli:    kubeCli,
+		kubeClient: kubeClient,
+		cbtClient:  cbtClient,
+		driverName: driverName,
 	}, nil
 }
 
@@ -104,4 +122,44 @@ func (s *Server) Start() {
 	<-sigCh
 	klog.Info("gracefully shutting down")
 	s.grpcServer.GracefulStop()
+}
+
+func (s *Server) getAudienceForDriver(ctx context.Context) (string, error) {
+	sms, err := s.cbtClient.CbtV1alpha1().SnapshotMetadataServices().Get(ctx, s.driverName, metav1.GetOptions{})
+	if err != nil {
+		return "", fmt.Errorf("failed to get SnapshotMetadataService resource for driver %s: %v", s.driverName, err)
+	}
+	return sms.Spec.Audience, nil
+}
+
+func (s *Server) authRequest(ctx context.Context, securityToken string) (bool, *authv1.UserInfo, error) {
+	// Find audienceToken from SnapshotMetadataService CR for the driver
+	audience, err := s.getAudienceForDriver(ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	// Authenticate request with the security token
+	authenticator := authn.NewTokenAuthenticator(s.kubeClient)
+	return authenticator.Authenticate(ctx, securityToken, audience)
+}
+
+func (s *Server) authenticateAndAuthorize(ctx context.Context, token string, namespace string) error {
+	// Authenticate request with security token and find the user identity
+	authenticated, userInfo, err := s.authRequest(ctx, token)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to authenticate user: %v", err)
+	}
+	if !authenticated {
+		return status.Error(codes.Unauthenticated, "unauthenticated user")
+	}
+	// Authorize user
+	authorizer := authz.NewSARAuthorizer(s.kubeClient)
+	decision, reason, err := authorizer.Authorize(ctx, userInfo, namespace)
+	if err != nil {
+		return status.Errorf(codes.Internal, "failed to authorize the user: %v", err)
+	}
+	if decision != kauthorizer.DecisionAllow {
+		return status.Errorf(codes.PermissionDenied, "user does not have permissions to perform the operation, %s, %v", reason, err.Error())
+	}
+	return nil
 }

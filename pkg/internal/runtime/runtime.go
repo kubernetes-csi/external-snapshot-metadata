@@ -30,6 +30,8 @@ import (
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+
+	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 )
 
 type Args struct {
@@ -76,6 +78,7 @@ type Runtime struct {
 
 	Config         *rest.Config
 	KubeClient     *kubernetes.Clientset
+	CBTClient      *cbt.Clientset
 	CSIConn        *grpc.ClientConn
 	MetricsManager metrics.CSIMetricsManager
 	DriverName     string
@@ -127,11 +130,16 @@ func (rt *Runtime) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBur
 
 	kubeClient, err := kubernetes.NewForConfig(config)
 	if err != nil {
-		return fmt.Errorf("error creating kube client: %w", err)
+		return fmt.Errorf("error creating kubernetes client: %w", err)
+	}
+	cbtClient, err := cbt.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("error creating kubernetes client for cbt resources: %w", err)
 	}
 
 	rt.Config = config
 	rt.KubeClient = kubeClient
+	rt.CBTClient = cbtClient
 
 	return nil
 }
