@@ -28,15 +28,54 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/status"
 	"google.golang.org/grpc/test/bufconn"
+	authv1 "k8s.io/api/authentication/v1"
+	"k8s.io/api/authorization/v1"
+	"k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/client-go/kubernetes/fake"
+	clientgotesting "k8s.io/client-go/testing"
 	klog "k8s.io/klog/v2"
 
+	smsv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
+	fakecbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/fake"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
 
 func runTestServer() (api.SnapshotMetadataClient, func()) {
+	audience := "xxxxxxaaaaa"
+	kubeClient := fake.NewSimpleClientset()
+	kubeClient.PrependReactor("create", "tokenreviews", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		tokenReview := &authv1.TokenReview{
+			Status: authv1.TokenReviewStatus{
+				Authenticated: true,
+				Audiences:     []string{audience, "xxxxxaaab"},
+			},
+		}
+		return true, tokenReview, nil
+	})
+	kubeClient.PrependReactor("create", "subjectaccessreviews", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		response := &v1.SubjectAccessReview{
+			Status: v1.SubjectAccessReviewStatus{
+				Allowed: true,
+				Reason:  "mock reason",
+			},
+		}
+		return true, response, nil
+	})
+	cbtClient := fakecbt.NewSimpleClientset()
+	cbtClient.PrependReactor("get", "snapshotmetadataservices", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		sms := &smsv1alpha1.SnapshotMetadataService{
+			Spec: smsv1alpha1.SnapshotMetadataServiceSpec{
+				Audience: audience,
+			},
+		}
+		return true, sms, nil
+	})
+
 	buffer := 1024 * 1024
 	listner := bufconn.Listen(buffer)
 	s := &Server{
+		kubeClient: kubeClient,
+		cbtClient:  cbtClient,
 		grpcServer: grpc.NewServer(),
 	}
 	api.RegisterSnapshotMetadataServer(s.grpcServer, s)

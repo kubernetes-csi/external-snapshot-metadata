@@ -38,7 +38,13 @@ func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stre
 	if len(req.GetSnapshotName()) == 0 {
 		return status.Errorf(codes.InvalidArgument, "snapshotName cannot be empty")
 	}
-	// TODO: Add requst authn/authz and business logic
+
+	ctx := stream.Context()
+	if err := s.authenticateAndAuthorize(ctx, req.SecurityToken, req.Namespace); err != nil {
+		return err
+	}
+
+	// TODO: Call CSI driver endpoint for changed block metadata
 	return nil
 }
 func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
@@ -55,6 +61,12 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 	if len(req.GetTargetSnapshotName()) == 0 {
 		return status.Errorf(codes.InvalidArgument, "targetSnapshotName cannot be empty")
 	}
-	// TODO: Add requst authn/authz and business logic
+
+	ctx := stream.Context()
+	if err := s.authenticateAndAuthorize(ctx, req.SecurityToken, req.Namespace); err != nil {
+		return err
+	}
+
+	// TODO: Call CSI driver endpoint for changed block metadata
 	return nil
 }
