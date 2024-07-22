@@ -1,4 +1,6 @@
-# Copyright 2024 The Kubernetes Authors.
+#!/usr/bin/env bash
+
+# Copyright 2019 The Kubernetes Authors.
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -12,24 +14,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-all: build
-
-.PHONY: proto
-# Build the Kubernetes SnapshotMetadata gRPC Service Go stubs.
-proto:
-	protoc -I=proto \
-		--go_out=pkg/api --go_opt=paths=source_relative \
-		--go-grpc_out=pkg/api --go-grpc_opt=paths=source_relative \
-		proto/*.proto
-
-.PHONY: crd
-# Generate CRD manifest using controller-gen
-crd:
-	@ cd client && ./hack/update-crd.sh
-
-
-# Include release-tools
-
-CMDS=csi-snapshot-metadata
-
-include release-tools/build.make
+if [ -f Gopkg.toml ]; then
+    echo "Repo uses 'dep' for vendoring."
+    (set -x; dep ensure)
+elif [ -f go.mod ]; then
+    release-tools/verify-go-version.sh "go"
+    (set -x; env GO111MODULE=on go mod tidy && env GO111MODULE=on go mod vendor)
+fi
