@@ -138,7 +138,6 @@ func TestNew(t *testing.T) {
 		assert.NotNil(t, rt.MetricsManager)
 		assert.Equal(t, expDriverName, rt.DriverName)
 	})
-
 }
 
 func TestWaitTillCSIDriverIsValidated(t *testing.T) {
@@ -177,7 +176,7 @@ func TestWaitTillCSIDriverIsValidated(t *testing.T) {
 		assert.Contains(t, err.Error(), "error getting CSI plugin capabilities")
 	})
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("no-snapshot-metadata-service", func(t *testing.T) {
 		th := newTestHarness().WithMockCSIDriver(t)
 		defer th.TerminateMockCSIDriver()
 
@@ -187,6 +186,38 @@ func TestWaitTillCSIDriverIsValidated(t *testing.T) {
 		th.MockCSIIdentityServer.EXPECT().Probe(gomock.Any(), gomock.Any()).Return(rspProbe, nil).AnyTimes()
 
 		rspGetPluginCapabilities := &csi.GetPluginCapabilitiesResponse{}
+		th.MockCSIIdentityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(rspGetPluginCapabilities, nil)
+
+		rt := th.Runtime()
+		assert.NotNil(t, rt.CSIConn)
+		assert.NotEmpty(t, rt.CSITimeout)
+
+		err := rt.WaitTillCSIDriverIsValidated()
+
+		assert.Error(t, err, "expected capability to not be present")
+		assert.Contains(t, err.Error(), "does not support the SNAPSHOT_METADATA_SERVICE")
+	})
+
+	t.Run("success", func(t *testing.T) {
+		th := newTestHarness().WithMockCSIDriver(t)
+		defer th.TerminateMockCSIDriver()
+
+		rspProbe := &csi.ProbeResponse{
+			Ready: &wrapperspb.BoolValue{Value: true},
+		}
+		th.MockCSIIdentityServer.EXPECT().Probe(gomock.Any(), gomock.Any()).Return(rspProbe, nil).AnyTimes()
+
+		rspGetPluginCapabilities := &csi.GetPluginCapabilitiesResponse{
+			Capabilities: []*csi.PluginCapability{
+				{
+					Type: &csi.PluginCapability_Service_{
+						Service: &csi.PluginCapability_Service{
+							Type: csi.PluginCapability_Service_SNAPSHOT_METADATA_SERVICE,
+						},
+					},
+				},
+			},
+		}
 		th.MockCSIIdentityServer.EXPECT().GetPluginCapabilities(gomock.Any(), gomock.Any()).Return(rspGetPluginCapabilities, nil)
 
 		rt := th.Runtime()
@@ -212,6 +243,9 @@ type testHarness struct {
 	FakeGRPCDriverName string // fake CSI driver name
 
 	FakeKubeConfigFile *os.File
+
+	// for the mock IdentityServer
+	*csi.UnimplementedIdentityServer
 }
 
 func newTestHarness() *testHarness {

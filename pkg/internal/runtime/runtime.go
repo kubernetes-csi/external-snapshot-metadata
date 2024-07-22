@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	csirpc "github.com/kubernetes-csi/csi-lib-utils/rpc"
@@ -172,12 +173,9 @@ func (rt *Runtime) WaitTillCSIDriverIsValidated() error {
 		return fmt.Errorf("error getting CSI plugin capabilities: %w", err)
 	}
 
-	// TODO: Require a release with the spec and csi-test updated to uncomment this code.
-	// if _, found := pcs[csi.PluginCapability_Service_SNAPSHOT_METADATA_SERVICE]; !found {
-	// 	klog.Errorf("CSI driver %s does not support the SNAPSHOT_METADATA_SERVICE", driverName)
-	// 	return errors.New("SNAPSHOT_METADATA_SERVICE not supported")
-	// }
-	_ = pcs // fake a reference to compile
+	if _, found := pcs[csi.PluginCapability_Service_SNAPSHOT_METADATA_SERVICE]; !found {
+		return fmt.Errorf("CSI driver %s does not support the SNAPSHOT_METADATA_SERVICE", rt.DriverName)
+	}
 
 	return nil
 }

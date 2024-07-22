@@ -3,11 +3,11 @@ module github.com/kubernetes-csi/external-snapshot-metadata
 go 1.22.4
 
 require (
-	//github.com/container-storage-interface/spec v1.9.1-0.20240314114506-2696773158b9
-	github.com/container-storage-interface/spec v1.9.0
+	github.com/container-storage-interface/spec v1.10.0
 	github.com/golang/mock v1.6.0
 	github.com/kubernetes-csi/csi-lib-utils v0.18.0
-	github.com/kubernetes-csi/csi-test/v5 v5.2.0
+	// TODO: update to the next release of csi-test
+	github.com/kubernetes-csi/csi-test/v5 v5.2.1-0.20240716144900-7a77a229ee78
 	github.com/stretchr/testify v1.8.4
 	google.golang.org/grpc v1.64.0
 	google.golang.org/protobuf v1.34.1
