@@ -17,26 +17,12 @@ limitations under the License.
 package grpc
 
 import (
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/status"
-
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
 
-func (s *Server) registerService() {
-	api.RegisterSnapshotMetadataServer(s.grpcServer, s)
-}
-
 func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stream api.SnapshotMetadata_GetMetadataAllocatedServer) error {
-	// validate request
-	if len(req.GetSecurityToken()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "securityToken is missing")
-	}
-	if len(req.GetNamespace()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "namespace parameter cannot be empty")
-	}
-	if len(req.GetSnapshotName()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "snapshotName cannot be empty")
+	if err := ValidateGetMetadataAllocatedRequest(req); err != nil {
+		return err
 	}
 
 	ctx := stream.Context()
@@ -47,19 +33,10 @@ func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stre
 	// TODO: Call CSI driver endpoint for changed block metadata
 	return nil
 }
+
 func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
-	// validate request
-	if len(req.GetSecurityToken()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "securityToken is missing")
-	}
-	if len(req.GetNamespace()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "namespace parameter cannot be empty")
-	}
-	if len(req.GetBaseSnapshotName()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "baseSnapshotName cannot be empty")
-	}
-	if len(req.GetTargetSnapshotName()) == 0 {
-		return status.Errorf(codes.InvalidArgument, "targetSnapshotName cannot be empty")
+	if err := ValidateGetMetadataDeltaRequest(req); err != nil {
+		return err
 	}
 
 	ctx := stream.Context()

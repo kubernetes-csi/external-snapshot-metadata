@@ -45,9 +45,9 @@ var (
 	showVersion = flag.Bool("version", false, "Show version.")
 	csiTimeout  = flag.Duration("timeout", defaultCSITimeout, "The timeout for any RPCs to the CSI driver. Default is 1 minute.")
 
-	port    = flag.Int("port", 50051, "Port number to listen on for SnapshotMetadata service")
-	tlsCert = flag.String("tls-cert", os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file.")
-	tlsKey  = flag.String("tls-key", os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file.")
+	grpcPort = flag.Int("port", 50051, "gRPC SnapshotMetadata service port number")
+	tlsCert  = flag.String("tls-cert", os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file.")
+	tlsKey   = flag.String("tls-key", os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file.")
 
 	kubeAPIQPS   = flag.Float64("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
@@ -78,6 +78,9 @@ func Run(version string) int {
 		KubeAPIBurst: *kubeAPIBurst,
 		KubeAPIQPS:   (float32)(*kubeAPIQPS),
 		Kubeconfig:   *kubeconfig,
+		GRPCPort:     *grpcPort,
+		TLSCertFile:  *tlsCert,
+		TLSKeyFile:   *tlsKey,
 	})
 	if err != nil {
 		klog.Error(err)
@@ -93,25 +96,24 @@ func Run(version string) int {
 	// also, but they should be made to fail until the driver is validated.
 
 	// run grpc server until terminated
-	server, err := grpc.NewServer(
-		rt.KubeClient,
-		rt.CBTClient,
-		rt.DriverName,
-		grpc.ServerConfig{
-			Port:        *port,
-			TLSCertFile: *tlsCert,
-			TLSKeyFile:  *tlsKey,
-		})
+	server, err := grpc.NewServer(grpc.ServerConfig{Runtime: rt})
 	if err != nil {
 		klog.Fatalf("Failed to start GRPC server: %v", err)
 	}
-	go server.Start()
+
+	// Start the gRPC server. This call does not block but
+	// arranges for the sidecar health to be exposed.
+	// Metadata requests are not served until the driver is ready.
+	server.Start()
 
 	// check for a compatible CSI driver.
 	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
 		klog.Error(err)
 		return 1
 	}
+
+	// Block until the gRPC server terminates.
+	server.WaitForTermination()
 
 	return 0
 }
