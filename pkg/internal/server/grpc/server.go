@@ -17,7 +17,6 @@ limitations under the License.
 package grpc
 
 import (
-	"context"
 	"crypto/tls"
 	"fmt"
 	"net"
@@ -27,61 +26,62 @@ import (
 	"syscall"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
-	"google.golang.org/grpc/status"
-	authv1 "k8s.io/api/authentication/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	kauthorizer "k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/kubernetes"
 	klog "k8s.io/klog/v2"
 
 	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
-	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/authn"
-	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/authz"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 )
 
 type ServerConfig struct {
-	Port        int
-	TLSKeyFile  string
-	TLSCertFile string
+	Runtime *runtime.Runtime
 }
 
 type Server struct {
 	api.UnimplementedSnapshotMetadataServer
-	grpcServer *grpc.Server
-	config     ServerConfig
-	kubeClient kubernetes.Interface
-	cbtClient  cbt.Interface
-	driverName string
+
+	config      ServerConfig
+	grpcServer  *grpc.Server
+	sigChan     chan os.Signal
+	startedChan chan int
 }
 
-func NewServer(
-	kubeClient kubernetes.Interface,
-	cbtClient cbt.Interface,
-	driverName string,
-	config ServerConfig,
-) (*Server, error) {
+func NewServer(config ServerConfig) (*Server, error) {
 	options, err := buildOptions(config)
 	if err != nil {
 		return nil, err
 	}
-	server := grpc.NewServer(options...)
-	return &Server{
-		grpcServer: server,
-		config:     config,
-		kubeClient: kubeClient,
-		cbtClient:  cbtClient,
-		driverName: driverName,
-	}, nil
+
+	s := &Server{
+		grpcServer:  grpc.NewServer(options...),
+		config:      config,
+		sigChan:     make(chan os.Signal, 1),
+		startedChan: make(chan int),
+	}
+
+	return s, nil
+}
+
+func (s *Server) driverName() string {
+	return s.config.Runtime.DriverName
+}
+
+func (s *Server) cbtClient() cbt.Interface {
+	return s.config.Runtime.CBTClient
+}
+
+func (s *Server) kubeClient() kubernetes.Interface {
+	return s.config.Runtime.KubeClient
 }
 
 func buildOptions(config ServerConfig) ([]grpc.ServerOption, error) {
-	tlsOptions, err := buildTLSOption(config.TLSCertFile, config.TLSKeyFile)
+	tlsOptions, err := buildTLSOption(config.Runtime.TLSCertFile, config.Runtime.TLSKeyFile)
 	if err != nil {
 		return nil, err
 	}
+
 	return []grpc.ServerOption{
 		tlsOptions,
 	}, nil
@@ -92,6 +92,7 @@ func buildTLSOption(cert, key string) (grpc.ServerOption, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to load tls certificates: %v", err)
 	}
+
 	config := &tls.Config{
 		Certificates: []tls.Certificate{serverCert},
 		ClientAuth:   tls.NoClientCert,
@@ -100,66 +101,40 @@ func buildTLSOption(cert, key string) (grpc.ServerOption, error) {
 	return grpc.Creds(credentials.NewTLS(config)), nil
 }
 
-func (s *Server) Start() {
-	listener, err := net.Listen("tcp", ":"+strconv.Itoa(s.config.Port))
+// Start start the gRPC server in its own goroutine.
+// Use the WaitForTermintation() to block.
+func (s *Server) Start() error {
+	listener, err := net.Listen("tcp", ":"+strconv.Itoa(s.config.Runtime.GRPCPort))
 	if err != nil {
-		klog.Fatalf("failed to start grpc server: %v", err)
+		klog.Errorf("failed to start grpc server: %v", err)
+		return err
 	}
-	s.registerService()
+
+	api.RegisterSnapshotMetadataServer(s.grpcServer, s)
 
 	go func() {
-		klog.Info("csi-snapshot-metadata sidecar GRPC server started listening of port :", s.config.Port)
+		klog.Infof("GRPC server started listening on port %d", s.config.Runtime.GRPCPort)
+
+		close(s.startedChan)
+
 		if err := s.grpcServer.Serve(listener); err != nil {
-			klog.Fatalf("failed to start grpc server: %v", err)
+			klog.Fatalf("GRPC server failed: %v", err)
 		}
 	}()
 
-	// Wait for termination signal
-	sigCh := make(chan os.Signal, 1)
-	signal.Notify(
-		sigCh, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM,
-	)
-	<-sigCh
-	klog.Info("gracefully shutting down")
-	s.grpcServer.GracefulStop()
-}
+	// Arrange for delivery of the termination signal.
+	signal.Notify(s.sigChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
 
-func (s *Server) getAudienceForDriver(ctx context.Context) (string, error) {
-	sms, err := s.cbtClient.CbtV1alpha1().SnapshotMetadataServices().Get(ctx, s.driverName, metav1.GetOptions{})
-	if err != nil {
-		return "", fmt.Errorf("failed to get SnapshotMetadataService resource for driver %s: %v", s.driverName, err)
-	}
-	return sms.Spec.Audience, nil
-}
-
-func (s *Server) authRequest(ctx context.Context, securityToken string) (bool, *authv1.UserInfo, error) {
-	// Find audienceToken from SnapshotMetadataService CR for the driver
-	audience, err := s.getAudienceForDriver(ctx)
-	if err != nil {
-		return false, nil, err
-	}
-	// Authenticate request with the security token
-	authenticator := authn.NewTokenAuthenticator(s.kubeClient)
-	return authenticator.Authenticate(ctx, securityToken, audience)
-}
-
-func (s *Server) authenticateAndAuthorize(ctx context.Context, token string, namespace string) error {
-	// Authenticate request with security token and find the user identity
-	authenticated, userInfo, err := s.authRequest(ctx, token)
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to authenticate user: %v", err)
-	}
-	if !authenticated {
-		return status.Error(codes.Unauthenticated, "unauthenticated user")
-	}
-	// Authorize user
-	authorizer := authz.NewSARAuthorizer(s.kubeClient)
-	decision, reason, err := authorizer.Authorize(ctx, userInfo, namespace)
-	if err != nil {
-		return status.Errorf(codes.Internal, "failed to authorize the user: %v", err)
-	}
-	if decision != kauthorizer.DecisionAllow {
-		return status.Errorf(codes.PermissionDenied, "user does not have permissions to perform the operation, %s, %v", reason, err.Error())
-	}
 	return nil
+}
+
+// WaitForTermination blocks until the server has stopped.
+func (s *Server) WaitForTermination() {
+	sigReceived := <-s.sigChan
+
+	klog.Infof("Starting a graceful shutdown on signal '%s' (%d)", sigReceived.String(), sigReceived)
+
+	s.grpcServer.GracefulStop()
+
+	klog.Infof("Shutdown complete")
 }

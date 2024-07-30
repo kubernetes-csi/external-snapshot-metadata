@@ -19,6 +19,7 @@ package runtime
 import (
 	"context"
 	"errors"
+	"fmt"
 	"net"
 	"os"
 	"path"
@@ -42,19 +43,34 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	t.Run("invalid-args", func(t *testing.T) {
-		args := Args{}
+	t.Run("validate-args", func(t *testing.T) {
+		invalidArgs := []Args{
+			{},
+			{CSIAddress: "1.2.3.4"},
+			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour},
+			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour, GRPCPort: 10},
+			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour, GRPCPort: 10, TLSCertFile: "/certFile"},
+		}
+		for i, tc := range invalidArgs {
+			t.Run(fmt.Sprintf("invalid-%d", i), func(t *testing.T) {
+				rt, err := New(tc)
+				assert.Error(t, err)
+				assert.Nil(t, rt)
+			})
+		}
 
-		rt, err := New(args)
-		assert.Error(t, err)
-		assert.Nil(t, rt)
-		assert.Contains(t, err.Error(), "CSIAddress is required")
+		t.Run("success", func(t *testing.T) {
+			validArgs := Args{
+				CSIAddress:  "1.2.3.4",
+				CSITimeout:  time.Hour,
+				GRPCPort:    10,
+				TLSCertFile: "/certFile",
+				TLSKeyFile:  "/keyFile",
+			}
 
-		args.CSIAddress = "1.2.3.4"
-		rt, err = New(args)
-		assert.Error(t, err)
-		assert.Nil(t, rt)
-		assert.Contains(t, err.Error(), "CSITimeout is required")
+			err := validArgs.Validate()
+			assert.NoError(t, err)
+		})
 	})
 
 	t.Run("kubeconfig-error", func(t *testing.T) {
@@ -260,6 +276,9 @@ func (th *testHarness) Runtime() *Runtime {
 			CSITimeout:   20 * time.Millisecond, // UT timeout
 			KubeAPIBurst: 99,                    // arbitrary
 			KubeAPIQPS:   3.142,                 // arbitrary
+			GRPCPort:     8000,                  // arbitrary
+			TLSCertFile:  "/certfile",           // arbitrary
+			TLSKeyFile:   "/keyfile",            //arbitrary
 		},
 		CSIConn: th.CSIDriverConn, // needs WithMockCSIDriver
 	}

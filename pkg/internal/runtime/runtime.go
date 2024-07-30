@@ -45,6 +45,12 @@ type Args struct {
 	KubeAPIQPS float32
 	// Absolute path to a kubeconfig file if operating out of cluster.
 	Kubeconfig string
+	// GRPC port number
+	GRPCPort int
+	// Absolute path to the TLS cert file.
+	TLSCertFile string
+	// Absolute path to the TLS key file.
+	TLSKeyFile string
 }
 
 func (args *Args) Validate() error {
@@ -53,6 +59,12 @@ func (args *Args) Validate() error {
 		return errors.New("CSIAddress is required")
 	case args.CSITimeout == 0:
 		return errors.New("CSITimeout is required")
+	case args.GRPCPort <= 0:
+		return errors.New("invalid GRPCPort")
+	case args.TLSCertFile == "":
+		return errors.New("missing TLSCertFile")
+	case args.TLSKeyFile == "":
+		return errors.New("missing TLSKeyFile")
 	}
 
 	return nil
@@ -77,8 +89,8 @@ type Runtime struct {
 	Args
 
 	Config         *rest.Config
-	KubeClient     *kubernetes.Clientset
-	CBTClient      *cbt.Clientset
+	KubeClient     kubernetes.Interface
+	CBTClient      cbt.Interface
 	CSIConn        *grpc.ClientConn
 	MetricsManager metrics.CSIMetricsManager
 	DriverName     string
@@ -132,6 +144,7 @@ func (rt *Runtime) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBur
 	if err != nil {
 		return fmt.Errorf("error creating kubernetes client: %w", err)
 	}
+
 	cbtClient, err := cbt.NewForConfig(config)
 	if err != nil {
 		return fmt.Errorf("error creating kubernetes client for cbt resources: %w", err)

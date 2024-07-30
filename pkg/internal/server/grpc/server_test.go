@@ -17,244 +17,106 @@ limitations under the License.
 package grpc
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"net"
+	"crypto/tls"
+	"syscall"
 	"testing"
+	"time"
 
-	"google.golang.org/grpc"
-	"google.golang.org/grpc/codes"
-	"google.golang.org/grpc/credentials/insecure"
-	"google.golang.org/grpc/status"
-	"google.golang.org/grpc/test/bufconn"
-	authv1 "k8s.io/api/authentication/v1"
-	"k8s.io/api/authorization/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	"github.com/stretchr/testify/assert"
 	"k8s.io/client-go/kubernetes/fake"
-	clientgotesting "k8s.io/client-go/testing"
-	klog "k8s.io/klog/v2"
 
-	smsv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
 	fakecbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/fake"
-	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 )
 
-func runTestServer() (api.SnapshotMetadataClient, func()) {
-	audience := "xxxxxxaaaaa"
-	kubeClient := fake.NewSimpleClientset()
-	kubeClient.PrependReactor("create", "tokenreviews", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-		tokenReview := &authv1.TokenReview{
-			Status: authv1.TokenReviewStatus{
-				Authenticated: true,
-				Audiences:     []string{audience, "xxxxxaaab"},
+func TestNewServer(t *testing.T) {
+	validConfig := ServerConfig{
+		Runtime: &runtime.Runtime{
+			Args: runtime.Args{
+				GRPCPort:    5001,
+				TLSCertFile: "certFile",
+				TLSKeyFile:  "keyFile",
 			},
-		}
-		return true, tokenReview, nil
-	})
-	kubeClient.PrependReactor("create", "subjectaccessreviews", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-		response := &v1.SubjectAccessReview{
-			Status: v1.SubjectAccessReviewStatus{
-				Allowed: true,
-				Reason:  "mock reason",
-			},
-		}
-		return true, response, nil
-	})
-	cbtClient := fakecbt.NewSimpleClientset()
-	cbtClient.PrependReactor("get", "snapshotmetadataservices", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-		sms := &smsv1alpha1.SnapshotMetadataService{
-			Spec: smsv1alpha1.SnapshotMetadataServiceSpec{
-				Audience: audience,
-			},
-		}
-		return true, sms, nil
+			DriverName: "driver",
+			CBTClient:  fakecbt.NewSimpleClientset(),
+			KubeClient: fake.NewSimpleClientset(),
+		},
+	}
+
+	t.Run("sanity-tls-generator", func(t *testing.T) {
+		tcg := &testTLSCertGenerator{}
+		defer tcg.Cleanup()
+
+		cert, err := tls.LoadX509KeyPair(tcg.GetTLSFiles(t))
+		assert.NoError(t, err)
+		assert.NotNil(t, cert)
 	})
 
-	buffer := 1024 * 1024
-	listner := bufconn.Listen(buffer)
-	s := &Server{
-		kubeClient: kubeClient,
-		cbtClient:  cbtClient,
-		grpcServer: grpc.NewServer(),
-	}
-	api.RegisterSnapshotMetadataServer(s.grpcServer, s)
-	go func() {
-		if err := s.grpcServer.Serve(listner); err != nil {
-			klog.Fatalf("error serving server: %v", err)
-		}
-	}()
-	conn, err := grpc.NewClient("passthrough://bufconn",
-		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
-			return listner.Dial()
-		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
-	if err != nil {
-		klog.Fatalf("error connecting to server: %v", err)
-	}
+	t.Run("tls-load-error", func(t *testing.T) {
+		tcg := &testTLSCertGenerator{}
+		defer tcg.Cleanup()
 
-	closer := func() {
-		err := listner.Close()
-		if err != nil {
-			klog.Fatalf("error closing listener: %v", err)
-		}
-		s.grpcServer.Stop()
-	}
+		cf, kf := tcg.GetTLSFiles(t)
+		rt := *validConfig.Runtime // copy
+		rt.TLSCertFile = cf
+		rt.TLSKeyFile = kf + "foo" // invalid path
 
-	client := api.NewSnapshotMetadataClient(conn)
-	return client, closer
-}
+		server, err := NewServer(ServerConfig{Runtime: &rt})
+		assert.Error(t, err)
+		assert.Nil(t, server)
+	})
 
-func TestSnapshotMetadata_GetMetadataDeltaInvalidRequest(t *testing.T) {
-	ctx := context.Background()
-	client, closer := runTestServer()
-	defer closer()
+	t.Run("listen-error", func(t *testing.T) {
+		tcg := &testTLSCertGenerator{}
+		defer tcg.Cleanup()
 
-	for _, tc := range []struct {
-		req           *api.GetMetadataDeltaRequest
-		errExpected   bool
-		expStatusCode codes.Code
-	}{
-		{
-			req:           &api.GetMetadataDeltaRequest{},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataDeltaRequest{
-				Namespace:          "test-ns",
-				BaseSnapshotName:   "snap-1",
-				TargetSnapshotName: "snap-2",
-			},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataDeltaRequest{
-				SecurityToken:      "token",
-				BaseSnapshotName:   "snap-1",
-				TargetSnapshotName: "snap-2",
-			},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataDeltaRequest{
-				SecurityToken:      "token",
-				Namespace:          "test-ns",
-				TargetSnapshotName: "snap-2",
-			},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataDeltaRequest{
-				SecurityToken:    "token",
-				Namespace:        "test-ns",
-				BaseSnapshotName: "snap-1",
-			},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataDeltaRequest{
-				SecurityToken:      "token",
-				Namespace:          "test-ns",
-				BaseSnapshotName:   "snap-1",
-				TargetSnapshotName: "snap-2",
-			},
-			errExpected: false,
-		},
-	} {
-		stream, err := client.GetMetadataDelta(ctx, tc.req)
-		if err != nil {
-			t.Error(err)
-		}
-		_, errStream := stream.Recv()
-		err1 := validateErrorStatus(tc.errExpected, errStream)
-		if err1 != nil {
-			t.Error(err1)
-			continue
-		}
-	}
-}
+		cf, kf := tcg.GetTLSFiles(t)
+		rt := *validConfig.Runtime // copy
+		rt.TLSCertFile = cf
+		rt.TLSKeyFile = kf
+		rt.GRPCPort = -1 // invalid port
 
-func TestSnapshotMetadata_GetMetadataAllocatedInvalidRequest(t *testing.T) {
-	ctx := context.Background()
-	client, closer := runTestServer()
-	defer closer()
+		s, err := NewServer(ServerConfig{Runtime: &rt})
+		assert.NoError(t, err)
+		assert.NotNil(t, s)
+		assert.NotNil(t, s.grpcServer)
+		assert.Equal(t, s.config.Runtime, &rt)
+		assert.NotNil(t, s.sigChan)
+		assert.NotNil(t, s.startedChan)
 
-	for _, tc := range []struct {
-		req           *api.GetMetadataAllocatedRequest
-		errExpected   bool
-		expStatusCode codes.Code
-	}{
-		{
-			req:           &api.GetMetadataAllocatedRequest{},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataAllocatedRequest{
-				Namespace:    "test-ns",
-				SnapshotName: "snap-1",
-			},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataAllocatedRequest{
-				SecurityToken: "token",
-				SnapshotName:  "snap-1",
-			},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataAllocatedRequest{
-				SecurityToken: "token",
-				Namespace:     "test-ns",
-			},
-			errExpected:   true,
-			expStatusCode: codes.InvalidArgument,
-		},
-		{
-			req: &api.GetMetadataAllocatedRequest{
-				SecurityToken: "token",
-				Namespace:     "test-ns",
-				SnapshotName:  "snap-1",
-			},
-			errExpected: false,
-		},
-	} {
-		stream, err := client.GetMetadataAllocated(ctx, tc.req)
-		if err != nil {
-			t.Error(err)
-		}
-		_, errStream := stream.Recv()
-		err1 := validateErrorStatus(tc.errExpected, errStream)
-		if err1 != nil {
-			t.Error(err1)
-			continue
-		}
-	}
-}
+		err = s.Start()
+		assert.Error(t, err)
+	})
 
-func validateErrorStatus(errExpected bool, errStream error) error {
-	if !errExpected && errStream != nil {
-		if errStream != io.EOF {
-			return fmt.Errorf("received unexpected error: %v", errStream)
-		}
-		return nil
-	}
-	if errExpected && errStream == nil {
-		return fmt.Errorf("expected rpc error with code %v, received nil", codes.InvalidArgument)
-	}
-	st, ok := status.FromError(errStream)
-	if !ok {
-		return fmt.Errorf("Failed to parse error")
-	}
-	if st.Code() != codes.InvalidArgument {
-		return fmt.Errorf("expected rpc error with code %v, received %v", codes.InvalidArgument, st.Code())
-	}
-	return nil
+	t.Run("start-stop", func(t *testing.T) {
+		tcg := &testTLSCertGenerator{}
+		defer tcg.Cleanup()
+
+		cf, kf := tcg.GetTLSFiles(t)
+		rt := *validConfig.Runtime // copy
+		rt.TLSCertFile = cf
+		rt.TLSKeyFile = kf
+
+		s, err := NewServer(ServerConfig{Runtime: &rt})
+		assert.NoError(t, err)
+		assert.NotNil(t, s)
+		assert.NotNil(t, s.grpcServer)
+		assert.Equal(t, s.config.Runtime, &rt)
+		assert.NotNil(t, s.sigChan)
+		assert.NotNil(t, s.startedChan)
+
+		err = s.Start()
+		assert.NoError(t, err)
+
+		// wait till the server goroutine has started
+		<-s.startedChan
+
+		// send a signal to the process to terminate the server
+		go func() {
+			time.Sleep(10 * time.Millisecond)
+			syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
+		}()
+
+		s.WaitForTermination()
+	})
 }
