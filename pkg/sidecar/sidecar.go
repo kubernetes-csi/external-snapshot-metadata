@@ -20,6 +20,8 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"os/signal"
+	"syscall"
 	"time"
 
 	klog "k8s.io/klog/v2"
@@ -89,14 +91,12 @@ func Run(version string) int {
 
 	klog.Infof("CSI driver name: %q", rt.DriverName)
 
-	// TBD
-	// May need to exposed metric and healthz HTTP end points
+	// TBD May need to exposed metric HTTP end point
 	// here because the wait for the CSI driver is open ended.
-	// If so, may need to initialize and start the SnapshotMetadata gRPC service
-	// also, but they should be made to fail until the driver is validated.
 
-	// run grpc server until terminated
-	server, err := grpc.NewServer(grpc.ServerConfig{Runtime: rt})
+	// Create the gRPC server. It won't start serving metadata until
+	// the CSIDriverIsReady method is called.
+	grpcServer, err := grpc.NewServer(grpc.ServerConfig{Runtime: rt})
 	if err != nil {
 		klog.Fatalf("Failed to start GRPC server: %v", err)
 	}
@@ -104,7 +104,7 @@ func Run(version string) int {
 	// Start the gRPC server. This call does not block but
 	// arranges for the sidecar health to be exposed.
 	// Metadata requests are not served until the driver is ready.
-	server.Start()
+	grpcServer.Start()
 
 	// check for a compatible CSI driver.
 	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
@@ -112,8 +112,18 @@ func Run(version string) int {
 		return 1
 	}
 
-	// Block until the gRPC server terminates.
-	server.WaitForTermination()
+	grpcServer.CSIDriverIsReady() // start serving metadata.
+
+	// Arrange for delivery of the termination signal.
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+
+	// wait until the signal is received.
+	sigReceived := <-sigChan
+
+	klog.Infof("Terminating on signal '%s' (%d)", sigReceived.String(), sigReceived)
+	grpcServer.Stop()
+	klog.Infof("Shutdown complete")
 
 	return 0
 }

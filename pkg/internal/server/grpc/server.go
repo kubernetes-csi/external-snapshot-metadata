@@ -20,13 +20,13 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
-	"os"
-	"os/signal"
 	"strconv"
-	"syscall"
+	"sync"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/health"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/client-go/kubernetes"
 	klog "k8s.io/klog/v2"
 
@@ -42,10 +42,9 @@ type ServerConfig struct {
 type Server struct {
 	api.UnimplementedSnapshotMetadataServer
 
-	config      ServerConfig
-	grpcServer  *grpc.Server
-	sigChan     chan os.Signal
-	startedChan chan int
+	config       ServerConfig
+	grpcServer   *grpc.Server
+	healthServer *health.Server
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -54,14 +53,11 @@ func NewServer(config ServerConfig) (*Server, error) {
 		return nil, err
 	}
 
-	s := &Server{
-		grpcServer:  grpc.NewServer(options...),
-		config:      config,
-		sigChan:     make(chan os.Signal, 1),
-		startedChan: make(chan int),
-	}
-
-	return s, nil
+	return &Server{
+		config:       config,
+		grpcServer:   grpc.NewServer(options...),
+		healthServer: newHealthServer(),
+	}, nil
 }
 
 func (s *Server) driverName() string {
@@ -102,7 +98,8 @@ func buildTLSOption(cert, key string) (grpc.ServerOption, error) {
 }
 
 // Start start the gRPC server in its own goroutine.
-// Use the WaitForTermintation() to block.
+// The method guarantees that on successful return the gRPC server goroutine is running.
+// The invoker should use the Stop() method to terminate the server when desired.
 func (s *Server) Start() error {
 	listener, err := net.Listen("tcp", ":"+strconv.Itoa(s.config.Runtime.GRPCPort))
 	if err != nil {
@@ -111,30 +108,31 @@ func (s *Server) Start() error {
 	}
 
 	api.RegisterSnapshotMetadataServer(s.grpcServer, s)
+	healthpb.RegisterHealthServer(s.grpcServer, s.healthServer)
+
+	wgGoroutineStarted := sync.WaitGroup{}
+	wgGoroutineStarted.Add(1)
 
 	go func() {
-		klog.Infof("GRPC server started listening on port %d", s.config.Runtime.GRPCPort)
-
-		close(s.startedChan)
+		wgGoroutineStarted.Done()
 
 		if err := s.grpcServer.Serve(listener); err != nil {
 			klog.Fatalf("GRPC server failed: %v", err)
 		}
 	}()
 
-	// Arrange for delivery of the termination signal.
-	signal.Notify(s.sigChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	wgGoroutineStarted.Wait()
 
 	return nil
 }
 
-// WaitForTermination blocks until the server has stopped.
-func (s *Server) WaitForTermination() {
-	sigReceived := <-s.sigChan
-
-	klog.Infof("Starting a graceful shutdown on signal '%s' (%d)", sigReceived.String(), sigReceived)
-
+// Stop terminates the gRPC server gracefully.
+func (s *Server) Stop() {
+	s.shuttingDown()
 	s.grpcServer.GracefulStop()
+}
 
-	klog.Infof("Shutdown complete")
+// CSIDriverIsReady is used to notify the server that the CSI driver is available for use.
+func (s *Server) CSIDriverIsReady() {
+	s.setReady()
 }
