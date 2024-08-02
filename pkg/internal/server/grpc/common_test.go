@@ -19,8 +19,6 @@ package grpc
 import (
 	"context"
 	"net"
-	"os"
-	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -155,88 +153,3 @@ func (th *testHarness) FakeCBTClient() *fakecbt.Clientset {
 
 	return cbtClient
 }
-
-// Support to test TLS routines utilizes test cert/key
-// data from crypto/tls/tls_test.go.
-type testTLSCertGenerator struct {
-	certFile string
-	keyFile  string
-}
-
-// GetTLSFiles returns the names of temporary cert and key files.
-// Use Cleanup() to release these files.
-func (tcg *testTLSCertGenerator) GetTLSFiles(t *testing.T) (string, string) {
-	tcg.certFile = tcg.writeTempFile(t, "cert", rsaCertPEM)
-	tcg.keyFile = tcg.writeTempFile(t, "key", rsaKeyPEM)
-
-	return tcg.certFile, tcg.keyFile
-}
-
-func (tcg *testTLSCertGenerator) writeTempFile(t *testing.T, pattern, content string) string {
-	f, err := os.CreateTemp("", pattern)
-	if err != nil {
-		tcg.cleanup(nil)
-	}
-	assert.NoError(t, err)
-
-	if _, err = f.Write([]byte(content)); err != nil {
-		tcg.cleanup(f)
-	}
-	assert.NoError(t, err)
-
-	if err = f.Close(); err != nil {
-		tcg.cleanup(f)
-	}
-	assert.NoError(t, err)
-
-	return f.Name()
-}
-
-func (tcg *testTLSCertGenerator) cleanup(f *os.File) {
-	if f != nil {
-		os.Remove(f.Name())
-	}
-
-	tcg.Cleanup()
-}
-
-func (tcg *testTLSCertGenerator) Cleanup() {
-	if tcg.certFile != "" {
-		os.Remove(tcg.certFile)
-		tcg.certFile = ""
-	}
-
-	if tcg.keyFile != "" {
-		os.Remove(tcg.keyFile)
-		tcg.keyFile = ""
-	}
-
-}
-
-// The following is copied from crypto/tls/tls_test.go
-var rsaCertPEM = `-----BEGIN CERTIFICATE-----
-MIIB0zCCAX2gAwIBAgIJAI/M7BYjwB+uMA0GCSqGSIb3DQEBBQUAMEUxCzAJBgNV
-BAYTAkFVMRMwEQYDVQQIDApTb21lLVN0YXRlMSEwHwYDVQQKDBhJbnRlcm5ldCBX
-aWRnaXRzIFB0eSBMdGQwHhcNMTIwOTEyMjE1MjAyWhcNMTUwOTEyMjE1MjAyWjBF
-MQswCQYDVQQGEwJBVTETMBEGA1UECAwKU29tZS1TdGF0ZTEhMB8GA1UECgwYSW50
-ZXJuZXQgV2lkZ2l0cyBQdHkgTHRkMFwwDQYJKoZIhvcNAQEBBQADSwAwSAJBANLJ
-hPHhITqQbPklG3ibCVxwGMRfp/v4XqhfdQHdcVfHap6NQ5Wok/4xIA+ui35/MmNa
-rtNuC+BdZ1tMuVCPFZcCAwEAAaNQME4wHQYDVR0OBBYEFJvKs8RfJaXTH08W+SGv
-zQyKn0H8MB8GA1UdIwQYMBaAFJvKs8RfJaXTH08W+SGvzQyKn0H8MAwGA1UdEwQF
-MAMBAf8wDQYJKoZIhvcNAQEFBQADQQBJlffJHybjDGxRMqaRmDhX0+6v02TUKZsW
-r5QuVbpQhH6u+0UgcW0jp9QwpxoPTLTWGXEWBBBurxFwiCBhkQ+V
------END CERTIFICATE-----
-`
-
-var rsaKeyPEM = testingKey(`-----BEGIN RSA TESTING KEY-----
-MIIBOwIBAAJBANLJhPHhITqQbPklG3ibCVxwGMRfp/v4XqhfdQHdcVfHap6NQ5Wo
-k/4xIA+ui35/MmNartNuC+BdZ1tMuVCPFZcCAwEAAQJAEJ2N+zsR0Xn8/Q6twa4G
-6OB1M1WO+k+ztnX/1SvNeWu8D6GImtupLTYgjZcHufykj09jiHmjHx8u8ZZB/o1N
-MQIhAPW+eyZo7ay3lMz1V01WVjNKK9QSn1MJlb06h/LuYv9FAiEA25WPedKgVyCW
-SmUwbPw8fnTcpqDWE3yTO3vKcebqMSsCIBF3UmVue8YU3jybC3NxuXq3wNm34R8T
-xVLHwDXh/6NJAiEAl2oHGGLz64BuAfjKrqwz7qMYr9HCLIe/YsoWq/olzScCIQDi
-D2lWusoe2/nEqfDVVWGWlyJ7yOmqaVm/iNUN9B2N2g==
------END RSA TESTING KEY-----
-`)
-
-func testingKey(s string) string { return strings.ReplaceAll(s, "TESTING KEY", "PRIVATE KEY") }
