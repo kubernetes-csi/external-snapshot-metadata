@@ -17,7 +17,6 @@ limitations under the License.
 package grpc
 
 import (
-	"crypto/tls"
 	"syscall"
 	"testing"
 	"time"
@@ -43,23 +42,14 @@ func TestNewServer(t *testing.T) {
 		},
 	}
 
-	t.Run("sanity-tls-generator", func(t *testing.T) {
-		tcg := &testTLSCertGenerator{}
-		defer tcg.Cleanup()
-
-		cert, err := tls.LoadX509KeyPair(tcg.GetTLSFiles(t))
-		assert.NoError(t, err)
-		assert.NotNil(t, cert)
-	})
-
 	t.Run("tls-load-error", func(t *testing.T) {
-		tcg := &testTLSCertGenerator{}
-		defer tcg.Cleanup()
+		th := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer th.RemoveTestTLSFiles(t)
+		rta := th.RuntimeArgs()
 
-		cf, kf := tcg.GetTLSFiles(t)
 		rt := *validConfig.Runtime // copy
-		rt.TLSCertFile = cf
-		rt.TLSKeyFile = kf + "foo" // invalid path
+		rt.TLSCertFile = rta.TLSCertFile
+		rt.TLSKeyFile = rta.TLSKeyFile + "foo" // invalid path
 
 		server, err := NewServer(ServerConfig{Runtime: &rt})
 		assert.Error(t, err)
@@ -67,13 +57,13 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("listen-error", func(t *testing.T) {
-		tcg := &testTLSCertGenerator{}
-		defer tcg.Cleanup()
+		th := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer th.RemoveTestTLSFiles(t)
+		rta := th.RuntimeArgs()
 
-		cf, kf := tcg.GetTLSFiles(t)
 		rt := *validConfig.Runtime // copy
-		rt.TLSCertFile = cf
-		rt.TLSKeyFile = kf
+		rt.TLSCertFile = rta.TLSCertFile
+		rt.TLSKeyFile = rta.TLSKeyFile
 		rt.GRPCPort = -1 // invalid port
 
 		s, err := NewServer(ServerConfig{Runtime: &rt})
@@ -89,13 +79,13 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("start-stop", func(t *testing.T) {
-		tcg := &testTLSCertGenerator{}
-		defer tcg.Cleanup()
+		th := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer th.RemoveTestTLSFiles(t)
+		rta := th.RuntimeArgs()
 
-		cf, kf := tcg.GetTLSFiles(t)
 		rt := *validConfig.Runtime // copy
-		rt.TLSCertFile = cf
-		rt.TLSKeyFile = kf
+		rt.TLSCertFile = rta.TLSCertFile
+		rt.TLSKeyFile = rta.TLSKeyFile
 
 		s, err := NewServer(ServerConfig{Runtime: &rt})
 		assert.NoError(t, err)
