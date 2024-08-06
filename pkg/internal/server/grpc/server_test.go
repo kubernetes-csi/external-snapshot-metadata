@@ -17,14 +17,16 @@ limitations under the License.
 package grpc
 
 import (
-	"syscall"
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc/codes"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	"k8s.io/client-go/kubernetes/fake"
 
 	fakecbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/fake"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 )
 
@@ -43,9 +45,9 @@ func TestNewServer(t *testing.T) {
 	}
 
 	t.Run("tls-load-error", func(t *testing.T) {
-		th := runtime.NewTestHarness().WithTestTLSFiles(t)
-		defer th.RemoveTestTLSFiles(t)
-		rta := th.RuntimeArgs()
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
 
 		rt := *validConfig.Runtime // copy
 		rt.TLSCertFile = rta.TLSCertFile
@@ -57,9 +59,9 @@ func TestNewServer(t *testing.T) {
 	})
 
 	t.Run("listen-error", func(t *testing.T) {
-		th := runtime.NewTestHarness().WithTestTLSFiles(t)
-		defer th.RemoveTestTLSFiles(t)
-		rta := th.RuntimeArgs()
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
 
 		rt := *validConfig.Runtime // copy
 		rt.TLSCertFile = rta.TLSCertFile
@@ -71,17 +73,15 @@ func TestNewServer(t *testing.T) {
 		assert.NotNil(t, s)
 		assert.NotNil(t, s.grpcServer)
 		assert.Equal(t, s.config.Runtime, &rt)
-		assert.NotNil(t, s.sigChan)
-		assert.NotNil(t, s.startedChan)
 
 		err = s.Start()
 		assert.Error(t, err)
 	})
 
 	t.Run("start-stop", func(t *testing.T) {
-		th := runtime.NewTestHarness().WithTestTLSFiles(t)
-		defer th.RemoveTestTLSFiles(t)
-		rta := th.RuntimeArgs()
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
 
 		rt := *validConfig.Runtime // copy
 		rt.TLSCertFile = rta.TLSCertFile
@@ -92,21 +92,35 @@ func TestNewServer(t *testing.T) {
 		assert.NotNil(t, s)
 		assert.NotNil(t, s.grpcServer)
 		assert.Equal(t, s.config.Runtime, &rt)
-		assert.NotNil(t, s.sigChan)
-		assert.NotNil(t, s.startedChan)
+		assert.False(t, s.isReady()) // initialized to not ready
 
 		err = s.Start()
 		assert.NoError(t, err)
 
-		// wait till the server goroutine has started
-		<-s.startedChan
+		// check that services are registered
+		si := s.grpcServer.GetServiceInfo()
+		for _, serviceName := range []string{
+			healthpb.Health_ServiceDesc.ServiceName,
+			api.SnapshotMetadata_ServiceDesc.ServiceName,
+		} {
+			assert.Contains(t, si, serviceName)
+		}
 
-		// send a signal to the process to terminate the server
-		go func() {
-			time.Sleep(10 * time.Millisecond)
-			syscall.Kill(syscall.Getpid(), syscall.SIGTERM)
-		}()
+		assert.False(t, s.isReady()) // not yet ready
+		err = s.isCSIDriverReady()
+		assert.Error(t, err)
+		st, ok := status.FromError(err)
+		assert.True(t, ok)
+		assert.Equal(t, codes.Unavailable, st.Code())
+		assert.Equal(t, msgUnavailableCSIDriverNotReady, st.Message())
 
-		s.WaitForTermination()
+		s.CSIDriverIsReady()
+
+		assert.True(t, s.isReady()) // now ready!
+		assert.NoError(t, s.isCSIDriverReady())
+
+		s.Stop()
+		assert.False(t, s.isReady())
+		assert.Error(t, s.isCSIDriverReady())
 	})
 }

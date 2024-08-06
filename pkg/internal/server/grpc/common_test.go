@@ -24,6 +24,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
+	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/test/bufconn"
 	authv1 "k8s.io/api/authentication/v1"
 	v1 "k8s.io/api/authorization/v1"
@@ -64,6 +65,7 @@ func (th *testHarness) ServerWithClientAPIs() *Server {
 			KubeClient: th.FakeKubeClient(),
 			DriverName: th.DriverName,
 		}},
+		healthServer: newHealthServer(),
 	}
 
 	return s
@@ -78,6 +80,7 @@ func (th *testHarness) StartGRPCServer(t *testing.T) *Server {
 	s := th.ServerWithClientAPIs()
 	s.grpcServer = th.grpcServer
 	api.RegisterSnapshotMetadataServer(s.grpcServer, s)
+	healthpb.RegisterHealthServer(s.grpcServer, s.healthServer)
 
 	go func() {
 		s.grpcServer.Serve(th.listener)
@@ -93,7 +96,7 @@ func (th *testHarness) StopGRPCServer(t *testing.T) {
 	th.grpcServer.Stop()
 }
 
-func (th *testHarness) GRPCClient(t *testing.T) api.SnapshotMetadataClient {
+func (th *testHarness) GRPCSnapshotMetadataClient(t *testing.T) api.SnapshotMetadataClient {
 	conn, err := grpc.NewClient("passthrough://bufconn",
 		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
 			return th.listener.Dial()
@@ -102,6 +105,17 @@ func (th *testHarness) GRPCClient(t *testing.T) api.SnapshotMetadataClient {
 	assert.NoError(t, err)
 
 	return api.NewSnapshotMetadataClient(conn)
+}
+
+func (th *testHarness) GRPCHealthClient(t *testing.T) healthpb.HealthClient {
+	conn, err := grpc.NewClient("passthrough://bufconn",
+		grpc.WithContextDialer(func(context.Context, string) (net.Conn, error) {
+			return th.listener.Dial()
+		}), grpc.WithTransportCredentials(insecure.NewCredentials()))
+
+	assert.NoError(t, err)
+
+	return healthpb.NewHealthClient(conn)
 }
 
 func (th *testHarness) FakeKubeClient() *fake.Clientset {

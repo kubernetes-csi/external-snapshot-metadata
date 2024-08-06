@@ -32,13 +32,14 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 	ctx := context.Background()
 
 	th := newTestHarness()
-	th.StartGRPCServer(t)
+	grpcServer := th.StartGRPCServer(t)
 	defer th.StopGRPCServer(t)
 
-	client := th.GRPCClient(t)
+	client := th.GRPCSnapshotMetadataClient(t)
 
 	for _, tc := range []struct {
 		name              string
+		setCSIDriverReady bool
 		req               *api.GetMetadataDeltaRequest
 		expectStreamError bool
 		expStatusCode     codes.Code
@@ -64,7 +65,20 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 			expStatusMsg:      msgUnauthenticatedUser,
 		},
 		{
-			name: "success",
+			name: "csi-driver-not-ready",
+			req: &api.GetMetadataDeltaRequest{
+				SecurityToken:      th.SecurityToken,
+				Namespace:          th.Namespace,
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+			},
+			expectStreamError: true,
+			expStatusCode:     codes.Unavailable,
+			expStatusMsg:      msgUnavailableCSIDriverNotReady,
+		},
+		{
+			name:              "success",
+			setCSIDriverReady: true,
 			req: &api.GetMetadataDeltaRequest{
 				SecurityToken:      th.SecurityToken,
 				Namespace:          th.Namespace,
@@ -75,6 +89,10 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.setCSIDriverReady {
+				grpcServer.CSIDriverIsReady()
+			}
+
 			stream, err := client.GetMetadataDelta(ctx, tc.req)
 
 			assert.NoError(t, err)
@@ -98,13 +116,14 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 	ctx := context.Background()
 
 	th := newTestHarness()
-	th.StartGRPCServer(t)
+	grpcServer := th.StartGRPCServer(t)
 	defer th.StopGRPCServer(t)
 
-	client := th.GRPCClient(t)
+	client := th.GRPCSnapshotMetadataClient(t)
 
 	for _, tc := range []struct {
 		name              string
+		setCSIDriverReady bool
 		req               *api.GetMetadataAllocatedRequest
 		expectStreamError bool
 		expStatusCode     codes.Code
@@ -129,7 +148,19 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 			expStatusMsg:      msgUnauthenticatedUser,
 		},
 		{
-			name: "success",
+			name: "csi-driver-not-ready",
+			req: &api.GetMetadataAllocatedRequest{
+				SecurityToken: th.SecurityToken,
+				Namespace:     th.Namespace,
+				SnapshotName:  "snap-1",
+			},
+			expectStreamError: true,
+			expStatusCode:     codes.Unavailable,
+			expStatusMsg:      msgUnavailableCSIDriverNotReady,
+		},
+		{
+			name:              "success",
+			setCSIDriverReady: true,
 			req: &api.GetMetadataAllocatedRequest{
 				SecurityToken: th.SecurityToken,
 				Namespace:     th.Namespace,
@@ -139,6 +170,10 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			if tc.setCSIDriverReady {
+				grpcServer.CSIDriverIsReady()
+			}
+
 			stream, err := client.GetMetadataAllocated(ctx, tc.req)
 
 			assert.NoError(t, err)

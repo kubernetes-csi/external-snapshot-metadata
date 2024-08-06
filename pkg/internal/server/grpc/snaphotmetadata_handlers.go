@@ -18,6 +18,8 @@ package grpc
 
 import (
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stream api.SnapshotMetadata_GetMetadataAllocatedServer) error {
@@ -27,6 +29,10 @@ func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stre
 
 	ctx := stream.Context()
 	if err := s.authenticateAndAuthorize(ctx, req.SecurityToken, req.Namespace); err != nil {
+		return err
+	}
+
+	if err := s.isCSIDriverReady(); err != nil {
 		return err
 	}
 
@@ -44,6 +50,20 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 		return err
 	}
 
+	if err := s.isCSIDriverReady(); err != nil {
+		return err
+	}
+
 	// TODO: Call CSI driver endpoint for changed block metadata
 	return nil
+}
+
+// isCSIDriverReady is a helper for the handlers that returns the appropriate error if the
+// CSI driver is not ready.
+func (s *Server) isCSIDriverReady() error {
+	if s.isReady() {
+		return nil
+	}
+
+	return status.Errorf(codes.Unavailable, msgUnavailableCSIDriverNotReady)
 }
