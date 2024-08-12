@@ -20,10 +20,12 @@ package runtime
 
 import (
 	"context"
+	"math/rand/v2"
 	"net"
 	"os"
 	"path"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -84,6 +86,11 @@ type TestHarness struct {
 	tlsCertFile        string
 	tlsKeyFile         string
 	tlsGenerator       *testTLSCertGenerator
+	// Minimize port-in-use errors from back-to-back test harness usage
+	// by dynamically assigning a port number to be used in the runtime
+	// arguments and ensuring that numbers are not repeated (at least not
+	// in the same process).
+	rtaPortNumber int
 
 	// for the mock/fake servers
 	*csi.UnimplementedIdentityServer
@@ -92,8 +99,9 @@ type TestHarness struct {
 // NewTestHarness returns a new TestHarness.
 func NewTestHarness() *TestHarness {
 	return &TestHarness{
-		tlsCertFile: "/certfile", // will be replaced with real files
-		tlsKeyFile:  "/keyfile",  // by WithTestTLSFiles()
+		tlsCertFile:   "/certfile", // will be replaced with real files
+		tlsKeyFile:    "/keyfile",  // by WithTestTLSFiles()
+		rtaPortNumber: nextTestHarnessPortNum(),
 	}
 }
 
@@ -109,7 +117,7 @@ func (th *TestHarness) RuntimeArgs() Args {
 		KubeAPIBurst: 99,                    // arbitrary
 		KubeAPIQPS:   3.142,                 // arbitrary
 		Kubeconfig:   kubeConfigFile,
-		GRPCPort:     8000, // arbitrary
+		GRPCPort:     th.rtaPortNumber,
 		TLSCertFile:  th.tlsCertFile,
 		TLSKeyFile:   th.tlsKeyFile,
 	}
@@ -395,3 +403,30 @@ D2lWusoe2/nEqfDVVWGWlyJ7yOmqaVm/iNUN9B2N2g==
 `)
 
 func testingKey(s string) string { return strings.ReplaceAll(s, "TESTING KEY", "PRIVATE KEY") }
+
+const (
+	// dynamic port number range
+	minDynamicPortNumber = 49152
+	maxDynamicPortNumber = 65535
+	// reserve a number of port numbers for back to back test harness invocations.
+	thMaxPortsUsableByHarness = 8192
+)
+
+var (
+	thPortMux     sync.Mutex
+	thLastPortNum int
+)
+
+func nextTestHarnessPortNum() int {
+	thPortMux.Lock()
+	defer thPortMux.Unlock()
+
+	if thLastPortNum == 0 {
+		// establish a random base with sufficient head room.
+		thLastPortNum = rand.IntN(maxDynamicPortNumber-minDynamicPortNumber-thMaxPortsUsableByHarness) + minDynamicPortNumber
+	} else {
+		thLastPortNum++
+	}
+
+	return thLastPortNum
+}

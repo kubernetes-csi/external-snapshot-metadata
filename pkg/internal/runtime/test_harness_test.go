@@ -41,6 +41,17 @@ func TestRuntimeTestHarness(t *testing.T) {
 		assert.NotNil(t, cert)
 	})
 
+	t.Run("unique-port-numbers", func(t *testing.T) {
+		pNum0 := NewTestHarness().RuntimeArgs().GRPCPort
+		assert.GreaterOrEqual(t, pNum0, minDynamicPortNumber)
+		assert.LessOrEqual(t, pNum0, maxDynamicPortNumber-thMaxPortsUsableByHarness)
+		assert.Equal(t, pNum0, thLastPortNum)
+
+		pNum1 := NewTestHarness().RuntimeArgs().GRPCPort
+		assert.True(t, pNum1 == pNum0+1)
+		assert.Equal(t, pNum1, thLastPortNum)
+	})
+
 	t.Run("fake-identity-server", func(t *testing.T) {
 		th := NewTestHarness().WithFakeKubeConfig(t).WithFakeCSIDriver(t, nil)
 		defer th.RemoveFakeKubeConfig(t)
