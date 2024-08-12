@@ -32,4 +32,6 @@ const (
 	msgPermissionDeniedFmt    = msgPermissionDeniedPrefix + ": %s"
 
 	msgUnauthenticatedUser = "unauthenticated user"
+
+	msgUnavailableCSIDriverNotReady = "the CSI driver is not yet ready"
 )
