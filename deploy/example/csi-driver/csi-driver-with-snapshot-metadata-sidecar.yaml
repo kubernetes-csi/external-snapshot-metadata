@@ -1,0 +1,71 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: csi-dummyplugin
+  namespace: csi-driver
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: csi-dummyplugin
+  replicas: 1
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: csi-dummyplugin
+    spec:
+      serviceAccountName: csi-dummyplugin
+      containers:
+      # TODO: replace with hostpath driver plugin once SNAPSHOT_METADATA service is available
+      # Currently, it points to the Mock implementation of CSI driver https://github.com/PrasadG193/sample-csi-cbt-service
+      - name: csi-dummyplugin
+        image: prasadg193/sample-csi-cbt-service:latest
+        args:
+        - "--endpoint=unix://csi/csi.sock"
+        env:
+        - name: "DRIVER_NAME"
+          value: "dummy.csi.k8s.io"
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - mountPath: /csi
+          name: socket-dir
+      - name: csi-snapshot-metadata
+        # TODO: Replace with build image once CI process is set
+        image: prasadg193/csi-snapshot-metadata:latest
+        command:
+        args:
+        - "-csi-address=unix:///csi/csi.sock"
+        - "-tls-cert=/tmp/certificates/tls.crt"
+        - "-tls-key=/tmp/certificates/tls.key"
+        readinessProbe:
+          exec:
+            command:
+            - "/bin/grpc_health_probe"
+            - "-addr=:50051"
+            - "-tls"
+            - "-tls-no-verify"
+          initialDelaySeconds: 5
+        livenessProbe:
+          exec:
+            command:
+            - "/bin/grpc_health_probe"
+            - "-addr=:50051"
+            - "-tls"
+            - "-tls-no-verify"
+          initialDelaySeconds: 10
+        securityContext:
+          privileged: true
+        volumeMounts:
+        - name: server-certs
+          mountPath: /tmp/certificates
+          readOnly: true
+        - mountPath: /csi
+          name: socket-dir
+      volumes:
+      - name: server-certs
+        secret:
+          secretName: csi-dummyplugin-certs
+      - hostPath:
+          path: /var/lib/kubelet/plugins/cbt/csi-hostpath
+          type: DirectoryOrCreate
+        name: socket-dir
