@@ -33,6 +33,7 @@ import (
 	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
+	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
 )
 
 type ServerConfig struct {
@@ -70,6 +71,14 @@ func (s *Server) cbtClient() cbt.Interface {
 
 func (s *Server) kubeClient() kubernetes.Interface {
 	return s.config.Runtime.KubeClient
+}
+
+func (s *Server) snapshotClient() snapshot.Interface {
+	return s.config.Runtime.SnapshotClient
+}
+
+func (s *Server) csiConnection() *grpc.ClientConn {
+	return s.config.Runtime.CSIConn
 }
 
 func buildOptions(config ServerConfig) ([]grpc.ServerOption, error) {
