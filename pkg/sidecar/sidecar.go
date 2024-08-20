@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -31,8 +32,26 @@ import (
 )
 
 const (
-	// Default timeout of short CSI calls like GetPluginInfo.
-	defaultCSITimeout = time.Minute
+	defaultCSISocket    = "/run/csi/socket"
+	defaultCSITimeout   = time.Minute // Default timeout of short CSI calls like GetPluginInfo.
+	defaultGRPCPort     = 50051
+	defaultHTTPEndpoint = ""
+	defaultKubeAPIQPS   = 5.0
+	defaultKubeAPIBurst = 10
+	defaultKubeconfig   = ""
+	defaultMetricsPath  = "/metrics"
+
+	flagCSIAddress   = "csi-address"
+	flagCSITimeout   = "timeout"
+	flagGRPCPort     = "port"
+	flagHTTPEndpoint = "http-endpoint"
+	flagKubeAPIBurst = "kube-api-burst"
+	flagKubeAPIQPS   = "kube-api-qps"
+	flagKubeconfig   = "kubeconfig"
+	flagMetricsPath  = "metrics-path"
+	flagTLSCert      = "tls-cert"
+	flagTLSKey       = "tls-key"
+	flagVersion      = "version"
 
 	// tlsCertEnvVar is an environment variable that specifies the path to tls certificate file.
 	tlsCertEnvVar = "TLS_CERT_PATH"
@@ -40,50 +59,24 @@ const (
 	tlsKeyEnvVar = "TLS_KEY_PATH"
 )
 
-// Command line flags.
-var (
-	kubeconfig  = flag.String("kubeconfig", "", "Absolute path to the kubeconfig file. Required only when running out of cluster.")
-	csiAddress  = flag.String("csi-address", "/run/csi/socket", "Address of the CSI driver socket.")
-	showVersion = flag.Bool("version", false, "Show version.")
-	csiTimeout  = flag.Duration("timeout", defaultCSITimeout, "The timeout for any RPCs to the CSI driver. Default is 1 minute.")
-
-	grpcPort = flag.Int("port", 50051, "gRPC SnapshotMetadata service port number")
-	tlsCert  = flag.String("tls-cert", os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file.")
-	tlsKey   = flag.String("tls-key", os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file.")
-
-	kubeAPIQPS   = flag.Float64("kube-api-qps", 5, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
-	kubeAPIBurst = flag.Int("kube-api-burst", 10, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
-
-	httpEndpoint = flag.String("http-endpoint", "", "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled.")
-	metricsPath  = flag.String("metrics-path", "/metrics", "The HTTP path where prometheus metrics will be exposed. Default is `/metrics`.")
-)
-
 // Run contains the body of the sidecar.
 // The function returns the process exit code.
-func Run(version string) int {
-	klog.InitFlags(nil)
-	flag.Set("logtostderr", "true")
-	flag.Parse()
+func Run(argv []string, version string) int {
+	s := newSidecarFlagSet(argv[0], version)
 
-	if *showVersion {
-		fmt.Println(os.Args[0], version)
+	handledShowVersion, err := s.parseFlagsAndHandleShowVersion(argv[1:])
+	if err != nil {
+		klog.Error(err)
+		return 1
+	}
+
+	if handledShowVersion {
 		return 0
 	}
 
-	klog.Infof("Version: %s", version)
+	klog.Infof("Version: %s", s.version)
 
-	// create the runtime clients.
-	// TODO: set up the HTTP server.
-	rt, err := runtime.New(runtime.Args{
-		CSIAddress:   *csiAddress,
-		CSITimeout:   *csiTimeout,
-		KubeAPIBurst: *kubeAPIBurst,
-		KubeAPIQPS:   (float32)(*kubeAPIQPS),
-		Kubeconfig:   *kubeconfig,
-		GRPCPort:     *grpcPort,
-		TLSCertFile:  *tlsCert,
-		TLSKeyFile:   *tlsKey,
-	})
+	rt, err := runtime.New(s.runtimeArgsFromFlags())
 	if err != nil {
 		klog.Error(err)
 		return 1
@@ -94,29 +87,175 @@ func Run(version string) int {
 	// TBD May need to exposed metric HTTP end point
 	// here because the wait for the CSI driver is open ended.
 
-	// Create the gRPC server. It won't start serving metadata until
-	// the CSIDriverIsReady method is called.
-	grpcServer, err := grpc.NewServer(grpc.ServerConfig{Runtime: rt})
+	grpcServer, err := startGRPCServerAndValidateCSIDriver(rt)
 	if err != nil {
-		klog.Fatalf("Failed to start GRPC server: %v", err)
-	}
-
-	// Start the gRPC server. This call does not block but
-	// arranges for the sidecar health to be exposed.
-	// Metadata requests are not served until the driver is ready.
-	grpcServer.Start()
-
-	// check for a compatible CSI driver.
-	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
 		klog.Error(err)
 		return 1
 	}
 
-	grpcServer.CSIDriverIsReady() // start serving metadata.
+	// TODO: Start the HTTP metrics server here.
 
-	// Arrange for delivery of the termination signal.
+	shutdownOnTerminationSignal(grpcServer)
+
+	return 0
+}
+
+type sidecarFlagSet struct {
+	*flag.FlagSet
+
+	version string
+
+	// flag variables
+	csiAddress   *string
+	csiTimeout   *time.Duration
+	grpcPort     *int
+	httpEndpoint *string
+	kubeAPIBurst *int
+	kubeAPIQPS   *float64
+	kubeconfig   *string
+	metricsPath  *string
+	showVersion  *bool
+	tlsCert      *string
+	tlsKey       *string
+}
+
+var sidecarFlagSetErrorHandling flag.ErrorHandling = flag.ExitOnError // UT interception point.
+
+func newSidecarFlagSet(name, version string) *sidecarFlagSet {
+	s := &sidecarFlagSet{
+		FlagSet: flag.NewFlagSet(name, sidecarFlagSetErrorHandling),
+		version: version,
+	}
+
+	// initialize flag variables
+	s.kubeconfig = s.String(flagKubeconfig, defaultKubeconfig, "Absolute path to the kubeconfig file. Required only when running out of cluster.")
+	s.csiAddress = s.String(flagCSIAddress, defaultCSISocket, "Address of the CSI driver socket.")
+	s.showVersion = s.Bool(flagVersion, false, "Show version.")
+	s.csiTimeout = s.Duration(flagCSITimeout, defaultCSITimeout, "The timeout for any RPCs to the CSI driver. Default is 1 minute.")
+
+	s.grpcPort = s.Int(flagGRPCPort, defaultGRPCPort, "GRPC SnapshotMetadata service port number")
+	s.tlsCert = s.String(flagTLSCert, os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file. Can also be set with the environment variable "+tlsCertEnvVar+".")
+	s.tlsKey = s.String(flagTLSKey, os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file. Can also be set with the environment variable "+tlsKeyEnvVar+".")
+
+	s.kubeAPIQPS = s.Float64(flagKubeAPIQPS, defaultKubeAPIQPS, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
+	s.kubeAPIBurst = s.Int(flagKubeAPIBurst, defaultKubeAPIBurst, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
+
+	s.httpEndpoint = s.String(flagHTTPEndpoint, defaultHTTPEndpoint, "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled.")
+	s.metricsPath = s.String(flagMetricsPath, defaultMetricsPath, "The HTTP path where prometheus metrics will be exposed. Defaults to "+defaultMetricsPath+".")
+
+	// K8s logging initialization
+	klog.InitFlags(s.FlagSet)
+	s.Set("logtostderr", "true")
+
+	return s
+}
+
+// parseFlags parses the given command line vector (len > 0)
+// returns an indication if it handled the "showVersion" flag.
+func (s *sidecarFlagSet) parseFlagsAndHandleShowVersion(args []string) (handledShowVersion bool, err error) {
+	if err := s.Parse(args); err != nil {
+		return false, err
+	}
+
+	if *s.showVersion {
+		fmt.Println(s.Name(), s.version)
+		return true, nil
+	}
+
+	return false, nil
+}
+
+func (s *sidecarFlagSet) runtimeArgsFromFlags() runtime.Args {
+	// TODO: set the HTTP server properties.
+	return runtime.Args{
+		CSIAddress:   *s.csiAddress,
+		CSITimeout:   *s.csiTimeout,
+		KubeAPIBurst: *s.kubeAPIBurst,
+		KubeAPIQPS:   (float32)(*s.kubeAPIQPS),
+		Kubeconfig:   *s.kubeconfig,
+		GRPCPort:     *s.grpcPort,
+		TLSCertFile:  *s.tlsCert,
+		TLSKeyFile:   *s.tlsKey,
+	}
+}
+
+// runtimeArgsToArgv is provided for unit testing.
+// Keep in sync with runtimeArgsFromFlags.
+func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []string {
+	argv := []string{progName}
+
+	if rta.Kubeconfig != "" {
+		argv = append(argv, "-"+flagKubeconfig, rta.Kubeconfig)
+	}
+
+	if rta.CSIAddress != defaultCSISocket {
+		argv = append(argv, "-"+flagCSIAddress, rta.CSIAddress)
+	}
+
+	if rta.CSITimeout != defaultCSITimeout {
+		argv = append(argv, "-"+flagCSITimeout, rta.CSITimeout.String())
+	}
+
+	if rta.GRPCPort != defaultGRPCPort {
+		argv = append(argv, "-"+flagGRPCPort, strconv.Itoa(rta.GRPCPort))
+	}
+
+	if rta.TLSCertFile != "" {
+		argv = append(argv, "-"+flagTLSCert, rta.TLSCertFile)
+	}
+
+	if rta.TLSKeyFile != "" {
+		argv = append(argv, "-"+flagTLSKey, rta.TLSKeyFile)
+	}
+
+	if rta.KubeAPIBurst != defaultKubeAPIBurst {
+		argv = append(argv, "-"+flagKubeAPIBurst, strconv.Itoa(rta.KubeAPIBurst))
+	}
+
+	if rta.KubeAPIQPS != defaultKubeAPIQPS {
+		argv = append(argv, "-"+flagKubeAPIQPS, strconv.FormatFloat(float64(rta.KubeAPIQPS), 'f', -1, 32))
+	}
+
+	return argv
+}
+
+// startGRPCServerAndValidateCSIDriver starts the GRPC server and waits
+// for it to validate the CSI driver capabilities.
+func startGRPCServerAndValidateCSIDriver(rt *runtime.Runtime) (*grpc.Server, error) {
+	// create the GRPC server.
+	grpcServer, err := grpc.NewServer(grpc.ServerConfig{Runtime: rt})
+	if err != nil {
+		klog.Errorf("Failed to start GRPC server: %v", err)
+		return nil, err
+	}
+
+	// Start the GRPC server. This call does not block but
+	// arranges for the sidecar health to be exposed.
+	// Metadata requests are not served until the CSI driver becomes ready.
+	if err := grpcServer.Start(); err != nil {
+		return nil, err
+	}
+
+	klog.Infof("GRPC server started listening on port %d", rt.GRPCPort)
+
+	// check for a compatible CSI driver.
+	if err := rt.WaitTillCSIDriverIsValidated(); err != nil {
+		return nil, err
+	}
+
+	// notify the server that it can start processing metadata requests.
+	grpcServer.CSIDriverIsReady()
+
+	return grpcServer, nil
+}
+
+// Note: these are UNIX specific.
+var terminationSignals = []os.Signal{syscall.SIGINT, syscall.SIGHUP, syscall.SIGQUIT, syscall.SIGTERM}
+
+func shutdownOnTerminationSignal(grpcServer *grpc.Server) {
+	// Arrange for delivery of the termination signals.
 	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, os.Interrupt, syscall.SIGHUP, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGTERM)
+	signal.Notify(sigChan, terminationSignals...)
 
 	// wait until the signal is received.
 	sigReceived := <-sigChan
@@ -124,6 +263,4 @@ func Run(version string) int {
 	klog.Infof("Terminating on signal '%s' (%d)", sigReceived.String(), sigReceived)
 	grpcServer.Stop()
 	klog.Infof("Shutdown complete")
-
-	return 0
 }

@@ -28,7 +28,7 @@ var (
 )
 
 func main() {
-	rc := sidecar.Run(version)
+	rc := sidecar.Run(os.Args, version)
 
 	os.Exit(rc)
 }
