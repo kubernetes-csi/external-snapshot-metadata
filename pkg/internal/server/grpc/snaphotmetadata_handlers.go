@@ -17,17 +17,21 @@ limitations under the License.
 package grpc
 
 import (
-	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
 
 func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stream api.SnapshotMetadata_GetMetadataAllocatedServer) error {
-	if err := ValidateGetMetadataAllocatedRequest(req); err != nil {
+	ctx := stream.Context()
+
+	snapshotHandle, err := s.ValidateGetMetadataAllocatedRequest(ctx, req)
+	if err != nil {
 		return err
 	}
 
-	ctx := stream.Context()
 	if err := s.authenticateAndAuthorize(ctx, req.SecurityToken, req.Namespace); err != nil {
 		return err
 	}
@@ -36,16 +40,25 @@ func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stre
 		return err
 	}
 
-	// TODO: Call CSI driver endpoint for changed block metadata
-	return nil
+	csiClient := csi.NewSnapshotMetadataClient(s.csiConnection())
+	csiReq := newCSIGetMetadataAllocatedRequest(ctx, snapshotHandle, req)
+
+	// Invoke CSI Driver's GetMetadataDelta gRPC and stream the response back to client
+	csiStream, err := csiClient.GetMetadataAllocated(ctx, csiReq)
+	if err != nil {
+		return err
+	}
+	return s.streamGetMetadataAllocatedResponse(stream, csiStream)
 }
 
 func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
-	if err := ValidateGetMetadataDeltaRequest(req); err != nil {
+	ctx := stream.Context()
+
+	baseSnapshotHandle, targetSnapshotHandle, err := s.ValidateGetMetadataDeltaRequest(ctx, req)
+	if err != nil {
 		return err
 	}
 
-	ctx := stream.Context()
 	if err := s.authenticateAndAuthorize(ctx, req.SecurityToken, req.Namespace); err != nil {
 		return err
 	}
@@ -54,8 +67,16 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 		return err
 	}
 
-	// TODO: Call CSI driver endpoint for changed block metadata
-	return nil
+	csiClient := csi.NewSnapshotMetadataClient(s.csiConnection())
+	csiReq := newCSIGetMetadataDeltaRequest(ctx, baseSnapshotHandle, targetSnapshotHandle, req)
+
+	// Invoke CSI Driver's GetMetadataDelta gRPC and stream the response back to client
+	csiStream, err := csiClient.GetMetadataDelta(ctx, csiReq)
+	if err != nil {
+		return err
+	}
+
+	return s.streamGetMetadataDeltaResponse(stream, csiStream)
 }
 
 // isCSIDriverReady is a helper for the handlers that returns the appropriate error if the

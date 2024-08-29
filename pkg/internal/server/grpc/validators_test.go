@@ -17,6 +17,7 @@ limitations under the License.
 package grpc
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -27,6 +28,11 @@ import (
 )
 
 func TestValidateGetMetadataAllocatedRequest(t *testing.T) {
+	ctx := context.Background()
+	th := newTestHarness()
+	grpcServer := th.StartGRPCServer(t)
+	defer th.StopGRPCServer(t)
+
 	for _, tc := range []struct {
 		name          string
 		req           *api.GetMetadataAllocatedRequest
@@ -84,7 +90,7 @@ func TestValidateGetMetadataAllocatedRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateGetMetadataAllocatedRequest(tc.req)
+			snapshotHandle, err := grpcServer.ValidateGetMetadataAllocatedRequest(ctx, tc.req)
 			if !tc.isValid {
 				assert.Error(t, err)
 				st, ok := status.FromError(err)
@@ -93,12 +99,19 @@ func TestValidateGetMetadataAllocatedRequest(t *testing.T) {
 				assert.Equal(t, tc.expStatusMsg, st.Message())
 			} else {
 				assert.NoError(t, err)
+				// TODO (PrasadG193): Add test coverage for VolumeSnapshot discovery failure
+				assert.NotEqual(t, snapshotHandle, "")
 			}
 		})
 	}
 }
 
 func TestValidateGetMetadataDeltaRequest(t *testing.T) {
+	ctx := context.Background()
+	th := newTestHarness()
+	grpcServer := th.StartGRPCServer(t)
+	defer th.StopGRPCServer(t)
+
 	for _, tc := range []struct {
 		name          string
 		req           *api.GetMetadataDeltaRequest
@@ -170,7 +183,7 @@ func TestValidateGetMetadataDeltaRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			err := ValidateGetMetadataDeltaRequest(tc.req)
+			baseSnapHandle, targetSnapHandle, err := grpcServer.ValidateGetMetadataDeltaRequest(ctx, tc.req)
 			if !tc.isValid {
 				assert.Error(t, err)
 				st, ok := status.FromError(err)
@@ -179,6 +192,9 @@ func TestValidateGetMetadataDeltaRequest(t *testing.T) {
 				assert.Equal(t, tc.expStatusMsg, st.Message())
 			} else {
 				assert.NoError(t, err)
+				// TODO (PrasadG193): Add test coverage for VolumeSnapshot discovery failure
+				assert.NotEqual(t, baseSnapHandle, "")
+				assert.NotEqual(t, targetSnapHandle, "")
 			}
 		})
 	}

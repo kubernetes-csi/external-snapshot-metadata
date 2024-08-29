@@ -21,12 +21,17 @@ const (
 	mgsInternalFailedToAuthorizeFmt       = mgsInternalFailedToAuthorizePrefix + ": %v"
 	msgInternalFailedToAuthenticatePrefix = "failed to authenticate user"
 	msgInternalFailedToAuthenticateFmt    = msgInternalFailedToAuthenticatePrefix + ": %v"
+	msgInternalFailedCSIDriverResponse    = "failed to get response from CSI driver"
+	msgInternalFailedCSIDriverResponseFmt = msgInternalFailedCSIDriverResponse + ": %v"
+	msgInternalFailedToSendResponse       = "failed to send response"
+	msgInternalFailedtoSendResponseFmt    = msgInternalFailedToSendResponse + ": %v"
 
 	msgInvalidArgumentBaseSnapshotNameMissing   = "baseSnapshotName cannot be empty"
 	msgInvalidArgumentNamespaceMissing          = "namespace parameter cannot be empty"
 	msgInvalidArgumentSecurityTokenMissing      = "securityToken is missing"
 	msgInvalidArgumentSnaphotNameMissing        = "snapshotName cannot be empty"
 	msgInvalidArgumentTargetSnapshotNameMissing = "targetSnapshotName cannot be empty"
+	msgInvalidArgumentSnaphotDriverInvalidFmt   = "VolumeSnapshot does not belong to the CSI driver %s"
 
 	msgPermissionDeniedPrefix = "user does not have permissions to perform the operation"
 	msgPermissionDeniedFmt    = msgPermissionDeniedPrefix + ": %s"
@@ -34,4 +39,18 @@ const (
 	msgUnauthenticatedUser = "unauthenticated user"
 
 	msgUnavailableCSIDriverNotReady = "the CSI driver is not yet ready"
+
+	msgUnavailableFailedToGetVolumeSnapshot      = "failed to get VolumeSnapshot"
+	msgUnavailableFailedToGetVolumeSnapshotFmt   = msgUnavailableFailedToGetVolumeSnapshot + ": %v"
+	msgUnavailableVolumeSnapshotNotReady         = "the VolumeSnapshot is not yet ready"
+	msgUnavailableVolumeSnapshotNotReadyFmt      = msgUnavailableVolumeSnapshotNotReady + ", name: %s"
+	msgUnavailableInvalidVolumeSnapshotStatus    = "boundVolumeSnapshotContentName is not set in VolumeSnapshot status"
+	msgUnavailableInvalidVolumeSnapshotStatusFmt = msgUnavailableInvalidVolumeSnapshotStatus + "name: %s"
+
+	msgUnavailableFailedToGetVolumeSnapshotContent      = "failed to get VolumeSnapshotContent"
+	msgUnavailableFailedToGetVolumeSnapshotContentFmt   = msgUnavailableFailedToGetVolumeSnapshotContent + ": %v"
+	msgUnavailableVolumeSnapshotContentNotReady         = "the VolumeSnapshotContent is not yet ready"
+	msgUnavailableVolumeSnapshotContentNotReadyFmt      = msgUnavailableVolumeSnapshotContentNotReady + ", name: %s"
+	msgUnavailableInvalidVolumeSnapshotContentStatus    = "snapshotHandle is not set in VolumeSnapshotContent status"
+	msgUnavailableInvalidVolumeSnapshotContentStatusFmt = msgUnavailableInvalidVolumeSnapshotContentStatus + "name: %s"
 )

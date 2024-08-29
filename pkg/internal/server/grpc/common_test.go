@@ -21,6 +21,8 @@ import (
 	"net"
 	"testing"
 
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	fakesnapshot "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -61,9 +63,10 @@ func newTestHarness() *testHarness {
 func (th *testHarness) ServerWithClientAPIs() *Server {
 	s := &Server{
 		config: ServerConfig{Runtime: &runtime.Runtime{
-			CBTClient:  th.FakeCBTClient(),
-			KubeClient: th.FakeKubeClient(),
-			DriverName: th.DriverName,
+			CBTClient:      th.FakeCBTClient(),
+			KubeClient:     th.FakeKubeClient(),
+			SnapshotClient: th.FakeSnapshotClient(),
+			DriverName:     th.DriverName,
 		}},
 		healthServer: newHealthServer(),
 	}
@@ -166,4 +169,55 @@ func (th *testHarness) FakeCBTClient() *fakecbt.Clientset {
 	})
 
 	return cbtClient
+}
+
+func (th *testHarness) FakeSnapshotClient() *fakesnapshot.Clientset {
+	snapshotClient := fakesnapshot.NewSimpleClientset()
+	snapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		ga := action.(clientgotesting.GetAction)
+		vs := &snapshotv1.VolumeSnapshot{
+			ObjectMeta: apimetav1.ObjectMeta{
+				Name:      ga.GetName(),
+				Namespace: ga.GetNamespace(),
+			},
+			Spec: snapshotv1.VolumeSnapshotSpec{
+				VolumeSnapshotClassName: stringPtr("csi-snapshot-class"),
+				Source: snapshotv1.VolumeSnapshotSource{
+					PersistentVolumeClaimName: stringPtr("pvc-1"),
+				},
+			},
+			Status: &snapshotv1.VolumeSnapshotStatus{
+				ReadyToUse:                     boolPtr(true),
+				BoundVolumeSnapshotContentName: stringPtr("vs-content-1"),
+			},
+		}
+		return true, vs, nil
+	})
+	snapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+		ga := action.(clientgotesting.GetAction)
+		vs := &snapshotv1.VolumeSnapshotContent{
+			ObjectMeta: apimetav1.ObjectMeta{
+				Name:      ga.GetName(),
+				Namespace: ga.GetNamespace(),
+			},
+			Spec: snapshotv1.VolumeSnapshotContentSpec{
+				Driver: th.DriverName,
+			},
+			Status: &snapshotv1.VolumeSnapshotContentStatus{
+				ReadyToUse:     boolPtr(true),
+				SnapshotHandle: stringPtr("snap-id-1"),
+			},
+		}
+		return true, vs, nil
+	})
+
+	return snapshotClient
+}
+
+func stringPtr(s string) *string {
+	return &s
+}
+
+func boolPtr(b bool) *bool {
+	return &b
 }

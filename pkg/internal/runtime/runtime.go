@@ -26,6 +26,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	csirpc "github.com/kubernetes-csi/csi-lib-utils/rpc"
+	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"
@@ -91,6 +92,7 @@ type Runtime struct {
 	Config         *rest.Config
 	KubeClient     kubernetes.Interface
 	CBTClient      cbt.Interface
+	SnapshotClient snapshot.Interface
 	CSIConn        *grpc.ClientConn
 	MetricsManager metrics.CSIMetricsManager
 	DriverName     string
@@ -150,9 +152,15 @@ func (rt *Runtime) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBur
 		return fmt.Errorf("error creating kubernetes client for cbt resources: %w", err)
 	}
 
+	snapshotClient, err := snapshot.NewForConfig(config)
+	if err != nil {
+		return fmt.Errorf("error creating kubernetes client for snapshot resources: %w", err)
+	}
+
 	rt.Config = config
 	rt.KubeClient = kubeClient
 	rt.CBTClient = cbtClient
+	rt.SnapshotClient = snapshotClient
 
 	return nil
 }
