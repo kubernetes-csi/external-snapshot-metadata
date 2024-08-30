@@ -32,7 +32,7 @@ import (
 func TestAuthenticateAndAuthorize(t *testing.T) {
 	t.Run("crd-get-error", func(t *testing.T) {
 		th := newTestHarness()
-		s := th.ServerWithClientAPIs()
+		s := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 		s.config.Runtime.DriverName += "foo"
 		assert.NotEqual(t, th.DriverName, s.driverName())
 
@@ -52,7 +52,7 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 
 	t.Run("crd-get-success", func(t *testing.T) {
 		th := newTestHarness()
-		s := th.ServerWithClientAPIs()
+		s := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 
 		retAudience, err := s.getAudienceForDriver(context.Background())
 		assert.NoError(t, err)
@@ -61,7 +61,7 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 
 	t.Run("authentication-error", func(t *testing.T) {
 		th := newTestHarness()
-		s := th.ServerWithClientAPIs()
+		s := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 
 		// intercept the creation and fail
 		kubeClient := s.config.Runtime.KubeClient.(*fake.Clientset)
@@ -86,7 +86,7 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 
 	t.Run("not-authenticated", func(t *testing.T) {
 		th := newTestHarness()
-		s := th.ServerWithClientAPIs()
+		s := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 
 		// direct call
 		authenticated, ui, err := s.authenticateRequest(context.Background(), th.SecurityToken+"foo")
@@ -105,7 +105,7 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 
 	t.Run("authorization-error", func(t *testing.T) {
 		th := newTestHarness()
-		s := th.ServerWithClientAPIs()
+		s := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 
 		// intercept the creation and fail
 		kubeClient := s.config.Runtime.KubeClient.(*fake.Clientset)
@@ -123,7 +123,7 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 
 	t.Run("not-authorized", func(t *testing.T) {
 		th := newTestHarness()
-		s := th.ServerWithClientAPIs()
+		s := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 
 		err := s.authenticateAndAuthorize(context.Background(), th.SecurityToken, th.Namespace+"foo")
 		assert.Error(t, err)
@@ -135,7 +135,7 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		th := newTestHarness()
-		s := th.ServerWithClientAPIs()
+		s := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 
 		err := s.authenticateAndAuthorize(context.Background(), th.SecurityToken, th.Namespace)
 		assert.NoError(t, err)

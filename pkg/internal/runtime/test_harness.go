@@ -70,11 +70,11 @@ type TestHarness struct {
 	MockCSIDriver                 *driver.MockCSIDriver
 	MockCSIIdentityServer         *driver.MockIdentityServer
 	MockCSISnapshotMetadataServer *driver.MockSnapshotMetadataServer
+	MockCSIDriverConn             *grpc.ClientConn
 
 	FakeCSIDriver *driver.CSIDriver
 
 	// Identity server responses
-	FakeCSIDriverName                 string
 	FakeProbeResponse                 *csi.ProbeResponse
 	FakeGetPluginCapabilitiesResponse *csi.GetPluginCapabilitiesResponse
 
@@ -82,7 +82,6 @@ type TestHarness struct {
 	fakeCSIDriverAddr  string
 	fakeKubeConfigFile *os.File
 	fakeGRPCServerDir  string
-	mockCSIDriverConn  *grpc.ClientConn
 	tlsCertFile        string
 	tlsKeyFile         string
 	tlsGenerator       *testTLSCertGenerator
@@ -91,6 +90,7 @@ type TestHarness struct {
 	// arguments and ensuring that numbers are not repeated (at least not
 	// in the same process).
 	rtaPortNumber int
+	driverName    string
 
 	// for the mock/fake servers
 	*csi.UnimplementedIdentityServer
@@ -124,10 +124,10 @@ func (th *TestHarness) RuntimeArgs() Args {
 }
 
 func (th *TestHarness) RuntimeForMockCSIDriver(t *testing.T) *Runtime {
-	assert.NotNil(t, th.mockCSIDriverConn, "needs WithMockCSIDriver")
+	assert.NotNil(t, th.MockCSIDriverConn, "needs WithMockCSIDriver")
 	rt := &Runtime{
 		Args:    th.RuntimeArgs(),
-		CSIConn: th.mockCSIDriverConn,
+		CSIConn: th.MockCSIDriverConn,
 	}
 	return rt
 }
@@ -213,11 +213,12 @@ func (th *TestHarness) WithMockCSIDriver(t *testing.T) *TestHarness {
 		t.Fatal("Connect", err)
 	}
 
-	th.mockCSIDriverConn = csiConn
+	th.MockCSIDriverConn = csiConn
 	th.MockController = mockController
 	th.MockCSIDriver = drv
 	th.MockCSIIdentityServer = identityServer
 	th.MockCSISnapshotMetadataServer = snapshotMetadataServer
+	th.driverName = "mock-csi-driver"
 
 	return th
 }
@@ -225,11 +226,10 @@ func (th *TestHarness) WithMockCSIDriver(t *testing.T) *TestHarness {
 func (th *TestHarness) TerminateMockCSIDriver() {
 	th.MockController.Finish()
 	th.MockCSIDriver.Stop()
-	th.mockCSIDriverConn.Close()
+	th.MockCSIDriverConn.Close()
 }
 
 // WithFakeCSIDriver launches a fake CSIDriver, optionally with a provided SnapshotMetadataServer.
-// It initializes the FakeCSIDriverName field.
 // If a SnapshotMetadataServer is provided then it initializes the FakeGetPluginCapabilitiesResponse
 // field to set the capability for the service.
 func (th *TestHarness) WithFakeCSIDriver(t *testing.T, sms csi.SnapshotMetadataServer) *TestHarness {
@@ -257,7 +257,7 @@ func (th *TestHarness) WithFakeCSIDriver(t *testing.T, sms csi.SnapshotMetadataS
 	assert.NoError(t, err)
 
 	th.FakeCSIDriver = csiDriver
-	th.FakeCSIDriverName = "fake-csi-driver"
+	th.driverName = "fake-csi-driver"
 	if sms != nil {
 		// ensure that the service gets advertised.
 		th.FakeGetPluginCapabilitiesResponse = &csi.GetPluginCapabilitiesResponse{
@@ -296,9 +296,9 @@ func (th *TestHarness) AssertErrorStatus(t *testing.T, err error, c codes.Code, 
 // The test harness fakes an identity server for the fake gRPC service
 
 func (th *TestHarness) GetPluginInfo(ctx context.Context, req *csi.GetPluginInfoRequest) (*csi.GetPluginInfoResponse, error) {
-	if th.FakeCSIDriverName != "" {
+	if th.driverName != "" {
 		rspGetPluginInfo := &csi.GetPluginInfoResponse{
-			Name: th.FakeCSIDriverName,
+			Name: th.driverName,
 		}
 		return rspGetPluginInfo, nil
 	}

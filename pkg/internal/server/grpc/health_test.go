@@ -27,7 +27,7 @@ import (
 func TestHealthService(t *testing.T) {
 	t.Run("state-transitions", func(t *testing.T) {
 		th := newTestHarness()
-		server := th.ServerWithClientAPIs()
+		server := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
 
 		assert.False(t, server.isReady())
 
@@ -49,7 +49,7 @@ func TestHealthService(t *testing.T) {
 
 	t.Run("client-health-checks", func(t *testing.T) {
 		th := newTestHarness()
-		server := th.StartGRPCServer(t)
+		server := th.StartGRPCServer(t, th.RuntimeWithClientAPIs())
 		defer th.StopGRPCServer(t)
 
 		client := th.GRPCHealthClient(t)

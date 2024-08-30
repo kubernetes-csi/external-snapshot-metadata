@@ -66,7 +66,7 @@ func TestRuntimeTestHarness(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotEmpty(t, driverName)
 
-		th.FakeCSIDriverName = ""
+		th.driverName = ""
 		driverName, err = csirpc.GetDriverName(ctx, rt.CSIConn)
 		assert.Error(t, err)
 		assert.Empty(t, driverName)

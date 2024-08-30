@@ -18,9 +18,11 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -31,8 +33,11 @@ import (
 func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 	ctx := context.Background()
 
-	th := newTestHarness()
-	grpcServer := th.StartGRPCServer(t)
+	th := newTestHarness().WithMockCSIDriver(t)
+	defer th.TerminateMockCSIDriver()
+	rtWithCSI := th.RuntimeWithClientAPIsAndMockCSIDriver(t)
+
+	grpcServer := th.StartGRPCServer(t, rtWithCSI)
 	defer th.StopGRPCServer(t)
 
 	client := th.GRPCSnapshotMetadataClient(t)
@@ -41,6 +46,8 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 		name              string
 		setCSIDriverReady bool
 		req               *api.GetMetadataDeltaRequest
+		mockCSIResponse   bool
+		mockCSIError      error
 		expectStreamError bool
 		expStatusCode     codes.Code
 		expStatusMsg      string
@@ -77,6 +84,21 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 			expStatusMsg:      msgUnavailableCSIDriverNotReady,
 		},
 		{
+			name:              "csi stream error",
+			setCSIDriverReady: true,
+			req: &api.GetMetadataDeltaRequest{
+				SecurityToken:      th.SecurityToken,
+				Namespace:          th.Namespace,
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+			},
+			mockCSIResponse:   true,
+			mockCSIError:      fmt.Errorf("stream error"),
+			expectStreamError: true,
+			expStatusCode:     codes.Internal,
+			expStatusMsg:      msgInternalFailedCSIDriverResponse,
+		},
+		{
 			name:              "success",
 			setCSIDriverReady: true,
 			req: &api.GetMetadataDeltaRequest{
@@ -85,12 +107,18 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 				BaseSnapshotName:   "snap-1",
 				TargetSnapshotName: "snap-2",
 			},
+			mockCSIResponse:   true,
+			mockCSIError:      nil,
 			expectStreamError: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.setCSIDriverReady {
 				grpcServer.CSIDriverIsReady()
+			}
+
+			if tc.mockCSIResponse {
+				th.MockCSISnapshotMetadataServer.EXPECT().GetMetadataDelta(gomock.Any(), gomock.Any()).Return(tc.mockCSIError)
 			}
 
 			stream, err := client.GetMetadataDelta(ctx, tc.req)
@@ -104,7 +132,7 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 				st, ok := status.FromError(errStream)
 				assert.True(t, ok)
 				assert.Equal(t, tc.expStatusCode, st.Code())
-				assert.Equal(t, tc.expStatusMsg, st.Message())
+				assert.ErrorContains(t, errStream, tc.expStatusMsg)
 			} else if errStream != nil {
 				assert.ErrorIs(t, errStream, io.EOF)
 			}
@@ -115,8 +143,11 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 	ctx := context.Background()
 
-	th := newTestHarness()
-	grpcServer := th.StartGRPCServer(t)
+	th := newTestHarness().WithMockCSIDriver(t)
+	defer th.TerminateMockCSIDriver()
+	rtWithCSI := th.RuntimeWithClientAPIsAndMockCSIDriver(t)
+
+	grpcServer := th.StartGRPCServer(t, rtWithCSI)
 	defer th.StopGRPCServer(t)
 
 	client := th.GRPCSnapshotMetadataClient(t)
@@ -125,6 +156,8 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 		name              string
 		setCSIDriverReady bool
 		req               *api.GetMetadataAllocatedRequest
+		mockCSIResponse   bool
+		mockCSIError      error
 		expectStreamError bool
 		expStatusCode     codes.Code
 		expStatusMsg      string
@@ -159,6 +192,20 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 			expStatusMsg:      msgUnavailableCSIDriverNotReady,
 		},
 		{
+			name:              "csi stream error",
+			setCSIDriverReady: true,
+			req: &api.GetMetadataAllocatedRequest{
+				SecurityToken: th.SecurityToken,
+				Namespace:     th.Namespace,
+				SnapshotName:  "snap-1",
+			},
+			mockCSIResponse:   true,
+			mockCSIError:      fmt.Errorf("stream error"),
+			expectStreamError: true,
+			expStatusCode:     codes.Internal,
+			expStatusMsg:      msgInternalFailedCSIDriverResponse,
+		},
+		{
 			name:              "success",
 			setCSIDriverReady: true,
 			req: &api.GetMetadataAllocatedRequest{
@@ -166,12 +213,18 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 				Namespace:     th.Namespace,
 				SnapshotName:  "snap-1",
 			},
+			mockCSIResponse:   true,
+			mockCSIError:      nil,
 			expectStreamError: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if tc.setCSIDriverReady {
 				grpcServer.CSIDriverIsReady()
+			}
+
+			if tc.mockCSIResponse {
+				th.MockCSISnapshotMetadataServer.EXPECT().GetMetadataAllocated(gomock.Any(), gomock.Any()).Return(tc.mockCSIError)
 			}
 
 			stream, err := client.GetMetadataAllocated(ctx, tc.req)
@@ -185,7 +238,7 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 				st, ok := status.FromError(errStream)
 				assert.True(t, ok)
 				assert.Equal(t, tc.expStatusCode, st.Code())
-				assert.Equal(t, tc.expStatusMsg, st.Message())
+				assert.ErrorContains(t, errStream, tc.expStatusMsg)
 			} else if errStream != nil {
 				assert.ErrorIs(t, errStream, io.EOF)
 			}
