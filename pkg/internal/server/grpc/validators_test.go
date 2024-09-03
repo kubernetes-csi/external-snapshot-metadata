@@ -30,7 +30,7 @@ import (
 func TestValidateGetMetadataAllocatedRequest(t *testing.T) {
 	ctx := context.Background()
 	th := newTestHarness()
-	grpcServer := th.StartGRPCServer(t)
+	grpcServer := th.StartGRPCServer(t, th.RuntimeWithClientAPIs())
 	defer th.StopGRPCServer(t)
 
 	for _, tc := range []struct {
@@ -109,7 +109,7 @@ func TestValidateGetMetadataAllocatedRequest(t *testing.T) {
 func TestValidateGetMetadataDeltaRequest(t *testing.T) {
 	ctx := context.Background()
 	th := newTestHarness()
-	grpcServer := th.StartGRPCServer(t)
+	grpcServer := th.StartGRPCServer(t, th.RuntimeWithClientAPIs())
 	defer th.StopGRPCServer(t)
 
 	for _, tc := range []struct {

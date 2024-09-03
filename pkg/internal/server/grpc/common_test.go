@@ -42,6 +42,8 @@ import (
 )
 
 type testHarness struct {
+	*runtime.TestHarness
+
 	SecurityToken string
 	DriverName    string
 	Audience      string
@@ -60,27 +62,44 @@ func newTestHarness() *testHarness {
 	}
 }
 
-func (th *testHarness) ServerWithClientAPIs() *Server {
+func (th *testHarness) WithMockCSIDriver(t *testing.T) *testHarness {
+	th.TestHarness = runtime.NewTestHarness().WithMockCSIDriver(t)
+	return th
+}
+
+func (th *testHarness) RuntimeWithClientAPIs() *runtime.Runtime {
+	return &runtime.Runtime{
+		CBTClient:      th.FakeCBTClient(),
+		KubeClient:     th.FakeKubeClient(),
+		SnapshotClient: th.FakeSnapshotClient(),
+		DriverName:     th.DriverName,
+	}
+}
+
+func (th *testHarness) RuntimeWithClientAPIsAndMockCSIDriver(t *testing.T) *runtime.Runtime {
+	assert.NotNil(t, th.MockCSIDriverConn, "needs WithMockCSIDriver")
+	rt := th.RuntimeWithClientAPIs()
+	rt.CSIConn = th.MockCSIDriverConn
+	rt.Args = th.RuntimeArgs()
+	return rt
+}
+
+func (th *testHarness) ServerWithRuntime(t *testing.T, rt *runtime.Runtime) *Server {
 	s := &Server{
-		config: ServerConfig{Runtime: &runtime.Runtime{
-			CBTClient:      th.FakeCBTClient(),
-			KubeClient:     th.FakeKubeClient(),
-			SnapshotClient: th.FakeSnapshotClient(),
-			DriverName:     th.DriverName,
-		}},
+		config:       ServerConfig{Runtime: rt},
 		healthServer: newHealthServer(),
 	}
 
 	return s
 }
 
-func (th *testHarness) StartGRPCServer(t *testing.T) *Server {
+func (th *testHarness) StartGRPCServer(t *testing.T, rt *runtime.Runtime) *Server {
 	buffer := 1024 * 1024
 
 	th.listener = bufconn.Listen(buffer)
 	th.grpcServer = grpc.NewServer()
 
-	s := th.ServerWithClientAPIs()
+	s := th.ServerWithRuntime(t, rt)
 	s.grpcServer = th.grpcServer
 	api.RegisterSnapshotMetadataServer(s.grpcServer, s)
 	healthpb.RegisterHealthServer(s.grpcServer, s.healthServer)

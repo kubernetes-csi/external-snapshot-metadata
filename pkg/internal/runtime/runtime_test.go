@@ -112,7 +112,7 @@ func TestNew(t *testing.T) {
 		assert.NotEmpty(t, expArgs.Kubeconfig)
 
 		// remove the fake driver name
-		th.FakeCSIDriverName = ""
+		th.driverName = ""
 
 		rt, err := New(expArgs)
 
@@ -127,7 +127,7 @@ func TestNew(t *testing.T) {
 		defer th.TerminateFakeCSIDriver(t)
 
 		expDriverName := "csi-driver-name"
-		th.FakeCSIDriverName = expDriverName
+		th.driverName = expDriverName
 
 		expArgs := th.RuntimeArgs()
 		assert.NotEmpty(t, expArgs.Kubeconfig)
