@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"sync"
 
+	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -33,7 +34,6 @@ import (
 	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
-	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
 )
 
 type ServerConfig struct {

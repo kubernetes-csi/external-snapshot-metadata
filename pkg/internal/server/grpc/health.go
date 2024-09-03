@@ -19,8 +19,10 @@ package grpc
 import (
 	"context"
 
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
+	"google.golang.org/grpc/status"
 	klog "k8s.io/klog/v2"
 )
 
@@ -56,4 +58,14 @@ func (s *Server) setNotReady() {
 func (s *Server) shuttingDown() {
 	klog.Info("Shutting down: setting status to NOT_SERVING")
 	s.healthServer.Shutdown()
+}
+
+// isCSIDriverReady is a helper for the handlers that returns the appropriate error if the
+// CSI driver is not ready.
+func (s *Server) isCSIDriverReady() error {
+	if s.isReady() {
+		return nil
+	}
+
+	return status.Errorf(codes.Unavailable, msgUnavailableCSIDriverNotReady)
 }

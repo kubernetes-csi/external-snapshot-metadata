@@ -31,7 +31,7 @@ const (
 	msgInvalidArgumentSecurityTokenMissing      = "securityToken is missing"
 	msgInvalidArgumentSnaphotNameMissing        = "snapshotName cannot be empty"
 	msgInvalidArgumentTargetSnapshotNameMissing = "targetSnapshotName cannot be empty"
-	msgInvalidArgumentSnaphotDriverInvalidFmt   = "VolumeSnapshot does not belong to the CSI driver %s"
+	msgInvalidArgumentSnaphotDriverInvalidFmt   = "VolumeSnapshot '%s' does not belong to the CSI driver '%s'"
 
 	msgPermissionDeniedPrefix = "user does not have permissions to perform the operation"
 	msgPermissionDeniedFmt    = msgPermissionDeniedPrefix + ": %s"

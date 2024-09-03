@@ -1,0 +1,75 @@
+/*
+Copyright 2024 The Kubernetes Authors.
+
+Licensed under the Apache License, Version 2.0 (the "License");
+you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+
+    http://www.apache.org/licenses/LICENSE-2.0
+
+Unless required by applicable law or agreed to in writing, software
+distributed under the License is distributed on an "AS IS" BASIS,
+WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+See the License for the specific language governing permissions and
+limitations under the License.
+*/
+
+package grpc
+
+import (
+	"context"
+
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+)
+
+// getVolSnapshotInfo returns the CSI snapshot handle and driver name of the specified VolumeSnapshot.
+func (s *Server) getVolSnapshotInfo(ctx context.Context, namespace, vsName string) (string, string, error) {
+	vs, err := s.getVolumeSnapshot(ctx, namespace, vsName)
+	if err != nil {
+		return "", "", err
+	}
+
+	vsc, err := s.getVolumeSnapshotContent(ctx, *vs.Status.BoundVolumeSnapshotContentName)
+	if err != nil {
+		return "", "", err
+	}
+
+	return *vsc.Status.SnapshotHandle, vsc.Spec.Driver, nil
+}
+
+func (s *Server) getVolumeSnapshot(ctx context.Context, namespace, vsName string) (*snapshotv1.VolumeSnapshot, error) {
+	vs, err := s.snapshotClient().SnapshotV1().VolumeSnapshots(namespace).Get(ctx, vsName, metav1.GetOptions{})
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotFmt, err)
+	}
+
+	if vs.Status.ReadyToUse == nil || !*vs.Status.ReadyToUse {
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableVolumeSnapshotNotReadyFmt, vsName)
+	}
+
+	if vs.Status.BoundVolumeSnapshotContentName == nil {
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableInvalidVolumeSnapshotStatusFmt, vsName)
+	}
+
+	return vs, nil
+}
+
+func (s *Server) getVolumeSnapshotContent(ctx context.Context, vscName string) (*snapshotv1.VolumeSnapshotContent, error) {
+	vsc, err := s.snapshotClient().SnapshotV1().VolumeSnapshotContents().Get(ctx, vscName, metav1.GetOptions{})
+	if err != nil {
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotContentFmt, err)
+	}
+
+	if vsc.Status.ReadyToUse == nil || !*vsc.Status.ReadyToUse {
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableVolumeSnapshotContentNotReadyFmt, vscName)
+	}
+
+	if vsc.Status.SnapshotHandle == nil {
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableInvalidVolumeSnapshotContentStatusFmt, vscName)
+	}
+
+	return vsc, nil
+}
