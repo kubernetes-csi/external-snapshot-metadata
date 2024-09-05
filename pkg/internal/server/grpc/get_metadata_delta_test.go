@@ -18,8 +18,11 @@ package grpc
 
 import (
 	"context"
+	"fmt"
+	"io"
 	"testing"
 
+	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -27,87 +30,117 @@ import (
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
 
-func TestValidateGetMetadataAllocatedRequest(t *testing.T) {
+func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 	ctx := context.Background()
-	th := newTestHarness()
-	grpcServer := th.StartGRPCServer(t, th.RuntimeWithClientAPIs())
+
+	th := newTestHarness().WithMockCSIDriver(t)
+	defer th.TerminateMockCSIDriver()
+	rtWithCSI := th.RuntimeWithClientAPIsAndMockCSIDriver(t)
+
+	grpcServer := th.StartGRPCServer(t, rtWithCSI)
 	defer th.StopGRPCServer(t)
 
+	client := th.GRPCSnapshotMetadataClient(t)
+
 	for _, tc := range []struct {
-		name          string
-		req           *api.GetMetadataAllocatedRequest
-		isValid       bool
-		expStatusCode codes.Code
-		expStatusMsg  string
+		name              string
+		setCSIDriverReady bool
+		req               *api.GetMetadataDeltaRequest
+		mockCSIResponse   bool
+		mockCSIError      error
+		expectStreamError bool
+		expStatusCode     codes.Code
+		expStatusMsg      string
 	}{
 		{
-			name:          "nil",
-			req:           nil,
-			expStatusCode: codes.InvalidArgument,
-			expStatusMsg:  msgInvalidArgumentSecurityTokenMissing,
+			name:              "invalid arguments",
+			req:               &api.GetMetadataDeltaRequest{},
+			expectStreamError: true,
+			expStatusCode:     codes.InvalidArgument,
+			expStatusMsg:      msgInvalidArgumentSecurityTokenMissing,
 		},
 		{
-			name:          "empty arguments",
-			req:           &api.GetMetadataAllocatedRequest{},
-			expStatusCode: codes.InvalidArgument,
-			expStatusMsg:  msgInvalidArgumentSecurityTokenMissing,
-		},
-		{
-			name: "missing security token",
-			req: &api.GetMetadataAllocatedRequest{
-				Namespace:    "test-ns",
-				SnapshotName: "snap-1",
+			name: "invalid token",
+			req: &api.GetMetadataDeltaRequest{
+				SecurityToken:      th.SecurityToken + "FOO",
+				Namespace:          th.Namespace,
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
 			},
-			expStatusCode: codes.InvalidArgument,
-			expStatusMsg:  msgInvalidArgumentSecurityTokenMissing,
+			expectStreamError: true,
+			expStatusCode:     codes.Unauthenticated,
+			expStatusMsg:      msgUnauthenticatedUser,
 		},
 		{
-			name: "namespace missing",
-			req: &api.GetMetadataAllocatedRequest{
-				SecurityToken: "token",
-				SnapshotName:  "snap-1",
+			name: "csi-driver-not-ready",
+			req: &api.GetMetadataDeltaRequest{
+				SecurityToken:      th.SecurityToken,
+				Namespace:          th.Namespace,
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
 			},
-			expStatusCode: codes.InvalidArgument,
-			expStatusMsg:  msgInvalidArgumentNamespaceMissing,
+			expectStreamError: true,
+			expStatusCode:     codes.Unavailable,
+			expStatusMsg:      msgUnavailableCSIDriverNotReady,
 		},
 		{
-			name: "snapshotName missing",
-			req: &api.GetMetadataAllocatedRequest{
-				SecurityToken: "token",
-				Namespace:     "test-ns",
+			name:              "csi stream error",
+			setCSIDriverReady: true,
+			req: &api.GetMetadataDeltaRequest{
+				SecurityToken:      th.SecurityToken,
+				Namespace:          th.Namespace,
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
 			},
-			expStatusCode: codes.InvalidArgument,
-			expStatusMsg:  msgInvalidArgumentSnaphotNameMissing,
+			mockCSIResponse:   true,
+			mockCSIError:      fmt.Errorf("stream error"),
+			expectStreamError: true,
+			expStatusCode:     codes.Internal,
+			expStatusMsg:      msgInternalFailedCSIDriverResponse,
 		},
 		{
-			name: "valid",
-			req: &api.GetMetadataAllocatedRequest{
-				SecurityToken: "token",
-				Namespace:     "test-ns",
-				SnapshotName:  "snap-1",
+			name:              "success",
+			setCSIDriverReady: true,
+			req: &api.GetMetadataDeltaRequest{
+				SecurityToken:      th.SecurityToken,
+				Namespace:          th.Namespace,
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
 			},
-			isValid: true,
+			mockCSIResponse:   true,
+			mockCSIError:      nil,
+			expectStreamError: false,
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			snapshotHandle, err := grpcServer.ValidateGetMetadataAllocatedRequest(ctx, tc.req)
-			if !tc.isValid {
-				assert.Error(t, err)
-				st, ok := status.FromError(err)
+			if tc.setCSIDriverReady {
+				grpcServer.CSIDriverIsReady()
+			}
+
+			if tc.mockCSIResponse {
+				th.MockCSISnapshotMetadataServer.EXPECT().GetMetadataDelta(gomock.Any(), gomock.Any()).Return(tc.mockCSIError)
+			}
+
+			stream, err := client.GetMetadataDelta(ctx, tc.req)
+
+			assert.NoError(t, err)
+
+			_, errStream := stream.Recv()
+
+			if tc.expectStreamError {
+				assert.NotNil(t, errStream)
+				st, ok := status.FromError(errStream)
 				assert.True(t, ok)
 				assert.Equal(t, tc.expStatusCode, st.Code())
-				assert.Equal(t, tc.expStatusMsg, st.Message())
-			} else {
-				assert.NoError(t, err)
-				// TODO (PrasadG193): Add test coverage for VolumeSnapshot discovery failure
-				assert.NotEqual(t, snapshotHandle, "")
+				assert.ErrorContains(t, errStream, tc.expStatusMsg)
+			} else if errStream != nil {
+				assert.ErrorIs(t, errStream, io.EOF)
 			}
 		})
 	}
 }
 
 func TestValidateGetMetadataDeltaRequest(t *testing.T) {
-	ctx := context.Background()
 	th := newTestHarness()
 	grpcServer := th.StartGRPCServer(t, th.RuntimeWithClientAPIs())
 	defer th.StopGRPCServer(t)
@@ -183,7 +216,7 @@ func TestValidateGetMetadataDeltaRequest(t *testing.T) {
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			baseSnapHandle, targetSnapHandle, err := grpcServer.ValidateGetMetadataDeltaRequest(ctx, tc.req)
+			err := grpcServer.validateGetMetadataDeltaRequest(tc.req)
 			if !tc.isValid {
 				assert.Error(t, err)
 				st, ok := status.FromError(err)
@@ -192,9 +225,6 @@ func TestValidateGetMetadataDeltaRequest(t *testing.T) {
 				assert.Equal(t, tc.expStatusMsg, st.Message())
 			} else {
 				assert.NoError(t, err)
-				// TODO (PrasadG193): Add test coverage for VolumeSnapshot discovery failure
-				assert.NotEqual(t, baseSnapHandle, "")
-				assert.NotEqual(t, targetSnapHandle, "")
 			}
 		})
 	}
