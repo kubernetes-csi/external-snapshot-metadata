@@ -98,12 +98,12 @@ func (s *Server) streamGetMetadataAllocatedResponse(clientStream api.SnapshotMet
 		}
 
 		if err != nil {
-			return status.Errorf(codes.Internal, msgInternalFailedCSIDriverResponseFmt, err)
+			return s.statusPassOrWrapError(err, codes.Internal, msgInternalFailedCSIDriverResponseFmt, err)
 		}
 
 		clientResp := s.convertToGetMetadataAllocatedResponse(csiResp)
 		if err := clientStream.Send(clientResp); err != nil {
-			return status.Errorf(codes.Internal, msgInternalFailedtoSendResponseFmt, err)
+			return s.statusPassOrWrapError(err, codes.Internal, msgInternalFailedtoSendResponseFmt, err)
 		}
 	}
 }

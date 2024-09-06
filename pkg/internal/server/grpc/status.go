@@ -16,6 +16,11 @@ limitations under the License.
 
 package grpc
 
+import (
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
+)
+
 const (
 	mgsInternalFailedToAuthorizePrefix    = "failed to authorize the user"
 	mgsInternalFailedToAuthorizeFmt       = mgsInternalFailedToAuthorizePrefix + ": %v"
@@ -54,3 +59,17 @@ const (
 	msgUnavailableInvalidVolumeSnapshotContentStatus    = "snapshotHandle is not set in VolumeSnapshotContent status"
 	msgUnavailableInvalidVolumeSnapshotContentStatusFmt = msgUnavailableInvalidVolumeSnapshotContentStatus + "name: %s"
 )
+
+// statusPassOrWrapError accepts an error and and returns it unchanged if it is nil or a gRPC Status with a code other than Unknown.
+// Otherwise it formats it as a gRPC Status with the given code, format string and arguments.
+func (s *Server) statusPassOrWrapError(err error, c codes.Code, format string, args ...any) error {
+	if err == nil {
+		return nil
+	}
+
+	if statusError := status.Convert(err); statusError != nil && statusError.Code() != codes.Unknown {
+		return err
+	}
+
+	return status.Errorf(c, format, args...)
+}

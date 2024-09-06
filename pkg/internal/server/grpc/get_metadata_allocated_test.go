@@ -82,7 +82,7 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 			expStatusMsg:      msgUnavailableCSIDriverNotReady,
 		},
 		{
-			name:              "csi stream error",
+			name:              "csi stream non status error",
 			setCSIDriverReady: true,
 			req: &api.GetMetadataAllocatedRequest{
 				SecurityToken: th.SecurityToken,
@@ -90,10 +90,24 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 				SnapshotName:  "snap-1",
 			},
 			mockCSIResponse:   true,
-			mockCSIError:      fmt.Errorf("stream error"),
+			mockCSIError:      fmt.Errorf("not a status error"),
 			expectStreamError: true,
 			expStatusCode:     codes.Internal,
 			expStatusMsg:      msgInternalFailedCSIDriverResponse,
+		},
+		{
+			name:              "csi stream status error",
+			setCSIDriverReady: true,
+			req: &api.GetMetadataAllocatedRequest{
+				SecurityToken: th.SecurityToken,
+				Namespace:     th.Namespace,
+				SnapshotName:  "snap-1",
+			},
+			mockCSIResponse:   true,
+			mockCSIError:      status.Errorf(codes.Aborted, "is a status error"),
+			expectStreamError: true,
+			expStatusCode:     codes.Aborted, // code unchanged
+			expStatusMsg:      "is a status error",
 		},
 		{
 			name:              "success",
