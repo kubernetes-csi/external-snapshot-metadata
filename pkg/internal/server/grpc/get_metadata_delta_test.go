@@ -84,7 +84,7 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 			expStatusMsg:      msgUnavailableCSIDriverNotReady,
 		},
 		{
-			name:              "csi stream error",
+			name:              "csi stream non status error",
 			setCSIDriverReady: true,
 			req: &api.GetMetadataDeltaRequest{
 				SecurityToken:      th.SecurityToken,
@@ -93,10 +93,25 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 				TargetSnapshotName: "snap-2",
 			},
 			mockCSIResponse:   true,
-			mockCSIError:      fmt.Errorf("stream error"),
+			mockCSIError:      fmt.Errorf("not a status error"),
 			expectStreamError: true,
 			expStatusCode:     codes.Internal,
 			expStatusMsg:      msgInternalFailedCSIDriverResponse,
+		},
+		{
+			name:              "csi stream status error",
+			setCSIDriverReady: true,
+			req: &api.GetMetadataDeltaRequest{
+				SecurityToken:      th.SecurityToken,
+				Namespace:          th.Namespace,
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+			},
+			mockCSIResponse:   true,
+			mockCSIError:      status.Errorf(codes.Aborted, "is a status error"),
+			expectStreamError: true,
+			expStatusCode:     codes.Aborted, // code unchanged
+			expStatusMsg:      "is a status error",
 		},
 		{
 			name:              "success",
