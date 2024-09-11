@@ -19,31 +19,43 @@ package grpc
 import (
 	"context"
 
-	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v6/apis/volumesnapshot/v1"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+type volSnapshotInfo struct {
+	DriverName                string
+	SnapshotHandle            string
+	VolumeSnapshot            *snapshotv1.VolumeSnapshot
+	VolumeSnapshotContentName string
+}
+
 // getVolSnapshotInfo returns the CSI snapshot handle and driver name of the specified VolumeSnapshot.
-func (s *Server) getVolSnapshotInfo(ctx context.Context, namespace, vsName string) (string, string, error) {
+func (s *Server) getVolSnapshotInfo(ctx context.Context, namespace, vsName string) (*volSnapshotInfo, error) {
 	vs, err := s.getVolumeSnapshot(ctx, namespace, vsName)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
 	vsc, err := s.getVolumeSnapshotContent(ctx, *vs.Status.BoundVolumeSnapshotContentName)
 	if err != nil {
-		return "", "", err
+		return nil, err
 	}
 
-	return *vsc.Status.SnapshotHandle, vsc.Spec.Driver, nil
+	return &volSnapshotInfo{
+		DriverName:                vsc.Spec.Driver,
+		SnapshotHandle:            *vsc.Status.SnapshotHandle,
+		VolumeSnapshot:            vs,
+		VolumeSnapshotContentName: vsc.Name,
+	}, nil
 }
 
 func (s *Server) getVolumeSnapshot(ctx context.Context, namespace, vsName string) (*snapshotv1.VolumeSnapshot, error) {
 	vs, err := s.snapshotClient().SnapshotV1().VolumeSnapshots(namespace).Get(ctx, vsName, metav1.GetOptions{})
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotFmt, err)
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotFmt, namespace, vsName, err)
 	}
 
 	if vs.Status.ReadyToUse == nil || !*vs.Status.ReadyToUse {
@@ -60,7 +72,7 @@ func (s *Server) getVolumeSnapshot(ctx context.Context, namespace, vsName string
 func (s *Server) getVolumeSnapshotContent(ctx context.Context, vscName string) (*snapshotv1.VolumeSnapshotContent, error) {
 	vsc, err := s.snapshotClient().SnapshotV1().VolumeSnapshotContents().Get(ctx, vscName, metav1.GetOptions{})
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotContentFmt, err)
+		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotContentFmt, vscName, err)
 	}
 
 	if vsc.Status.ReadyToUse == nil || !*vsc.Status.ReadyToUse {

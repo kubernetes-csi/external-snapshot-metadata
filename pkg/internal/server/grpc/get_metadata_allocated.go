@@ -73,20 +73,25 @@ func (s *Server) validateGetMetadataAllocatedRequest(req *api.GetMetadataAllocat
 }
 
 func (s *Server) convertToCSIGetMetadataAllocatedRequest(ctx context.Context, req *api.GetMetadataAllocatedRequest) (*csi.GetMetadataAllocatedRequest, error) {
-	snapshotHandle, driver, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.SnapshotName)
+	vsi, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.SnapshotName)
 	if err != nil {
 		return nil, err
 	}
 
-	if driver != s.driverName() {
+	if vsi.DriverName != s.driverName() {
 		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.SnapshotName, s.driverName())
 	}
 
+	secretsMap, err := s.getSnapshotterCredentials(ctx, vsi)
+	if err != nil {
+		return nil, err
+	}
+
 	return &csi.GetMetadataAllocatedRequest{
-		SnapshotId:     snapshotHandle,
+		SnapshotId:     vsi.SnapshotHandle,
 		StartingOffset: req.StartingOffset,
 		MaxResults:     req.MaxResults,
-		//TODO: set Secrets field
+		Secrets:        secretsMap,
 	}, nil
 }
 

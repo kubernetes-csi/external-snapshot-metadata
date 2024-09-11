@@ -45,19 +45,36 @@ const (
 
 	msgUnavailableCSIDriverNotReady = "the CSI driver is not yet ready"
 
+	msgUnavailableFailedToGetCredentials    = "failed to get credentials"
+	msgUnavailableFailedToGetCredentialsFmt = msgUnavailableFailedToGetCredentials + ": %v"
+
 	msgUnavailableFailedToGetVolumeSnapshot      = "failed to get VolumeSnapshot"
-	msgUnavailableFailedToGetVolumeSnapshotFmt   = msgUnavailableFailedToGetVolumeSnapshot + ": %v"
+	msgUnavailableFailedToGetVolumeSnapshotFmt   = msgUnavailableFailedToGetVolumeSnapshot + " '%s/%s': %v"
 	msgUnavailableVolumeSnapshotNotReady         = "the VolumeSnapshot is not yet ready"
 	msgUnavailableVolumeSnapshotNotReadyFmt      = msgUnavailableVolumeSnapshotNotReady + ", name: %s"
 	msgUnavailableInvalidVolumeSnapshotStatus    = "boundVolumeSnapshotContentName is not set in VolumeSnapshot status"
 	msgUnavailableInvalidVolumeSnapshotStatusFmt = msgUnavailableInvalidVolumeSnapshotStatus + ", name: %s"
 
 	msgUnavailableFailedToGetVolumeSnapshotContent      = "failed to get VolumeSnapshotContent"
-	msgUnavailableFailedToGetVolumeSnapshotContentFmt   = msgUnavailableFailedToGetVolumeSnapshotContent + ": %v"
+	msgUnavailableFailedToGetVolumeSnapshotContentFmt   = msgUnavailableFailedToGetVolumeSnapshotContent + " '%s': %v"
 	msgUnavailableVolumeSnapshotContentNotReady         = "the VolumeSnapshotContent is not yet ready"
 	msgUnavailableVolumeSnapshotContentNotReadyFmt      = msgUnavailableVolumeSnapshotContentNotReady + ", name: %s"
 	msgUnavailableInvalidVolumeSnapshotContentStatus    = "snapshotHandle is not set in VolumeSnapshotContent status"
 	msgUnavailableInvalidVolumeSnapshotContentStatusFmt = msgUnavailableInvalidVolumeSnapshotContentStatus + ", name: %s"
+
+	msgUnavailableFailedToGetVolumeSnapshotClass    = "failed to get VolumeSnapshotClass"
+	msgUnavailableFailedToGetVolumeSnapshotClassFmt = msgUnavailableFailedToGetVolumeSnapshotClass + " '%s': %v"
+
+	msgUnavailableFailedToListVolumeSnapshotClasses    = "failed to list VolumeSnapshotClasses"
+	msgUnavailableFailedToListVolumeSnapshotClassesFmt = msgUnavailableFailedToListVolumeSnapshotClasses + ": %v"
+
+	msgUnavailableMultipleDefaultVolumeSnapshotClassesForDriver    = "multiple default VolumeSnapshotClasses are set for the CSI driver"
+	msgUnavailableMultipleDefaultVolumeSnapshotClassesForDriverFmt = msgUnavailableMultipleDefaultVolumeSnapshotClassesForDriver + " '%s'"
+	msgUnavailableNoDefaultVolumeSnapshotClassForDriver            = "no default VolumeSnapshotClass is set for the CSI driver"
+	msgUnavailableNoDefaultVolumeSnapshotClassForDriverFmt         = msgUnavailableNoDefaultVolumeSnapshotClassForDriver + " '%s'"
+
+	msgUnavailableInvalidSecretInVolumeSnapshotClass    = "invalid snapshotter secret parameters in VolumeSnapshotClass"
+	msgUnavailableInvalidSecretInVolumeSnapshotClassFmt = msgUnavailableInvalidSecretInVolumeSnapshotClass + ": %v"
 )
 
 // statusPassOrWrapError accepts an error and and returns it unchanged if it is nil or a gRPC Status with a code other than Unknown.
