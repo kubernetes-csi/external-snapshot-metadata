@@ -30,6 +30,7 @@ import (
 	"google.golang.org/grpc/test/bufconn"
 	authv1 "k8s.io/api/authentication/v1"
 	v1 "k8s.io/api/authorization/v1"
+	corev1 "k8s.io/api/core/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
@@ -49,6 +50,10 @@ type testHarness struct {
 	Audience      string
 	Namespace     string
 
+	fakeKubeClient     *fake.Clientset
+	fakeSnapshotClient *fakesnapshot.Clientset
+	fakeCBTClient      *fakecbt.Clientset
+
 	grpcServer *grpc.Server
 	listener   *bufconn.Listener
 }
@@ -67,18 +72,25 @@ func (th *testHarness) WithMockCSIDriver(t *testing.T) *testHarness {
 	return th
 }
 
-func (th *testHarness) RuntimeWithClientAPIs() *runtime.Runtime {
+func (th *testHarness) WithFakeClientAPIs() *testHarness {
+	th.fakeKubeClient = th.makeFakeKubeClient()
+	th.fakeSnapshotClient = th.makeFakeSnapshotClient()
+	th.fakeCBTClient = th.makeFakeCBTClient()
+	return th
+}
+
+func (th *testHarness) Runtime() *runtime.Runtime {
 	return &runtime.Runtime{
-		CBTClient:      th.FakeCBTClient(),
-		KubeClient:     th.FakeKubeClient(),
-		SnapshotClient: th.FakeSnapshotClient(),
+		CBTClient:      th.fakeCBTClient,
+		KubeClient:     th.fakeKubeClient,
+		SnapshotClient: th.fakeSnapshotClient,
 		DriverName:     th.DriverName,
 	}
 }
 
-func (th *testHarness) RuntimeWithClientAPIsAndMockCSIDriver(t *testing.T) *runtime.Runtime {
+func (th *testHarness) RuntimeWithMockCSIDriver(t *testing.T) *runtime.Runtime {
 	assert.NotNil(t, th.MockCSIDriverConn, "needs WithMockCSIDriver")
-	rt := th.RuntimeWithClientAPIs()
+	rt := th.Runtime()
 	rt.CSIConn = th.MockCSIDriverConn
 	rt.Args = th.RuntimeArgs()
 	return rt
@@ -140,10 +152,9 @@ func (th *testHarness) GRPCHealthClient(t *testing.T) healthpb.HealthClient {
 	return healthpb.NewHealthClient(conn)
 }
 
-func (th *testHarness) FakeKubeClient() *fake.Clientset {
-	kubeClient := fake.NewSimpleClientset()
-
-	kubeClient.PrependReactor("create", "tokenreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+func (th *testHarness) makeFakeKubeClient() *fake.Clientset {
+	fakeKubeClient := fake.NewSimpleClientset()
+	fakeKubeClient.PrependReactor("create", "tokenreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 		ca := action.(clientgotesting.CreateAction)
 		trs := ca.GetObject().(*authv1.TokenReview)
 		trs.Status.Authenticated = false
@@ -153,8 +164,7 @@ func (th *testHarness) FakeKubeClient() *fake.Clientset {
 		}
 		return true, trs, nil
 	})
-
-	kubeClient.PrependReactor("create", "subjectaccessreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+	fakeKubeClient.PrependReactor("create", "subjectaccessreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 		ca := action.(clientgotesting.CreateAction)
 		sar := ca.GetObject().(*v1.SubjectAccessReview)
 		if sar.Spec.ResourceAttributes != nil && sar.Spec.ResourceAttributes.Namespace == th.Namespace {
@@ -166,12 +176,12 @@ func (th *testHarness) FakeKubeClient() *fake.Clientset {
 		return true, sar, nil
 	})
 
-	return kubeClient
+	return fakeKubeClient
 }
 
-func (th *testHarness) FakeCBTClient() *fakecbt.Clientset {
-	cbtClient := fakecbt.NewSimpleClientset()
-	cbtClient.PrependReactor("get", "snapshotmetadataservices", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+func (th *testHarness) makeFakeCBTClient() *fakecbt.Clientset {
+	fakeCBTClient := fakecbt.NewSimpleClientset()
+	fakeCBTClient.PrependReactor("get", "snapshotmetadataservices", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 		ga := action.(clientgotesting.GetAction)
 		if ga.GetName() != th.DriverName {
 			return false, nil, nil
@@ -186,51 +196,64 @@ func (th *testHarness) FakeCBTClient() *fakecbt.Clientset {
 		}
 		return true, sms, nil
 	})
+	return fakeCBTClient
 
-	return cbtClient
 }
 
-func (th *testHarness) FakeSnapshotClient() *fakesnapshot.Clientset {
-	snapshotClient := fakesnapshot.NewSimpleClientset()
-	snapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+func (th *testHarness) makeFakeSnapshotClient() *fakesnapshot.Clientset {
+	fakeSnapshotClient := fakesnapshot.NewSimpleClientset()
+	fakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 		ga := action.(clientgotesting.GetAction)
-		vs := &snapshotv1.VolumeSnapshot{
-			ObjectMeta: apimetav1.ObjectMeta{
-				Name:      ga.GetName(),
-				Namespace: ga.GetNamespace(),
-			},
-			Spec: snapshotv1.VolumeSnapshotSpec{
-				VolumeSnapshotClassName: stringPtr("csi-snapshot-class"),
-				Source: snapshotv1.VolumeSnapshotSource{
-					PersistentVolumeClaimName: stringPtr("pvc-1"),
-				},
-			},
-			Status: &snapshotv1.VolumeSnapshotStatus{
-				ReadyToUse:                     boolPtr(true),
-				BoundVolumeSnapshotContentName: stringPtr("vs-content-1"),
-			},
-		}
+		vs := volumeSnapshot(ga.GetName(), ga.GetNamespace())
 		return true, vs, nil
 	})
-	snapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+	fakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 		ga := action.(clientgotesting.GetAction)
-		vs := &snapshotv1.VolumeSnapshotContent{
-			ObjectMeta: apimetav1.ObjectMeta{
-				Name:      ga.GetName(),
-				Namespace: ga.GetNamespace(),
-			},
-			Spec: snapshotv1.VolumeSnapshotContentSpec{
-				Driver: th.DriverName,
-			},
-			Status: &snapshotv1.VolumeSnapshotContentStatus{
-				ReadyToUse:     boolPtr(true),
-				SnapshotHandle: stringPtr("snap-id-1"),
-			},
-		}
-		return true, vs, nil
+		vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
+		return true, vsc, nil
 	})
+	return fakeSnapshotClient
+}
 
-	return snapshotClient
+func volumeSnapshot(name, namespace string) *snapshotv1.VolumeSnapshot {
+	return &snapshotv1.VolumeSnapshot{
+		ObjectMeta: apimetav1.ObjectMeta{
+			Name:      name,
+			Namespace: namespace,
+		},
+		Spec: snapshotv1.VolumeSnapshotSpec{
+			VolumeSnapshotClassName: stringPtr("csi-snapshot-class"),
+			Source: snapshotv1.VolumeSnapshotSource{
+				PersistentVolumeClaimName: stringPtr("pvc-1"),
+			},
+		},
+		Status: &snapshotv1.VolumeSnapshotStatus{
+			ReadyToUse:                     boolPtr(true),
+			BoundVolumeSnapshotContentName: stringPtr(name),
+		},
+	}
+}
+
+func volumeSnapshotContent(name, driver string) *snapshotv1.VolumeSnapshotContent {
+	return &snapshotv1.VolumeSnapshotContent{
+		ObjectMeta: apimetav1.ObjectMeta{
+			Name: name,
+		},
+		Spec: snapshotv1.VolumeSnapshotContentSpec{
+			Driver: driver,
+			Source: snapshotv1.VolumeSnapshotContentSource{
+				VolumeHandle: stringPtr("volume-" + name),
+			},
+			VolumeSnapshotRef: corev1.ObjectReference{
+				Name:      "snapshot-" + name,
+				Namespace: "test",
+			},
+		},
+		Status: &snapshotv1.VolumeSnapshotContentStatus{
+			ReadyToUse:     boolPtr(true),
+			SnapshotHandle: stringPtr(name + "-id"),
+		},
+	}
 }
 
 func stringPtr(s string) *string {

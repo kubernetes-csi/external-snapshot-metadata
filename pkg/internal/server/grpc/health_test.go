@@ -26,8 +26,8 @@ import (
 
 func TestHealthService(t *testing.T) {
 	t.Run("state-transitions", func(t *testing.T) {
-		th := newTestHarness()
-		server := th.ServerWithRuntime(t, th.RuntimeWithClientAPIs())
+		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+		server := th.ServerWithRuntime(t, th.Runtime())
 
 		assert.False(t, server.isReady())
 
@@ -48,8 +48,8 @@ func TestHealthService(t *testing.T) {
 	})
 
 	t.Run("client-health-checks", func(t *testing.T) {
-		th := newTestHarness()
-		server := th.StartGRPCServer(t, th.RuntimeWithClientAPIs())
+		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+		server := th.StartGRPCServer(t, th.Runtime())
 		defer th.StopGRPCServer(t)
 
 		client := th.GRPCHealthClient(t)

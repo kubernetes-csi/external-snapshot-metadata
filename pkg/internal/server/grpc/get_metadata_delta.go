@@ -88,7 +88,7 @@ func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *a
 
 	targetSnapshotHandle, driver, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.TargetSnapshotName)
 	if err != nil {
-		return nil, status.Errorf(codes.Unavailable, msgUnavailableVolumeSnapshotNotReady)
+		return nil, err
 	}
 
 	if driver != s.driverName() {

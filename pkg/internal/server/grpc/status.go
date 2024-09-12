@@ -50,14 +50,14 @@ const (
 	msgUnavailableVolumeSnapshotNotReady         = "the VolumeSnapshot is not yet ready"
 	msgUnavailableVolumeSnapshotNotReadyFmt      = msgUnavailableVolumeSnapshotNotReady + ", name: %s"
 	msgUnavailableInvalidVolumeSnapshotStatus    = "boundVolumeSnapshotContentName is not set in VolumeSnapshot status"
-	msgUnavailableInvalidVolumeSnapshotStatusFmt = msgUnavailableInvalidVolumeSnapshotStatus + "name: %s"
+	msgUnavailableInvalidVolumeSnapshotStatusFmt = msgUnavailableInvalidVolumeSnapshotStatus + ", name: %s"
 
 	msgUnavailableFailedToGetVolumeSnapshotContent      = "failed to get VolumeSnapshotContent"
 	msgUnavailableFailedToGetVolumeSnapshotContentFmt   = msgUnavailableFailedToGetVolumeSnapshotContent + ": %v"
 	msgUnavailableVolumeSnapshotContentNotReady         = "the VolumeSnapshotContent is not yet ready"
 	msgUnavailableVolumeSnapshotContentNotReadyFmt      = msgUnavailableVolumeSnapshotContentNotReady + ", name: %s"
 	msgUnavailableInvalidVolumeSnapshotContentStatus    = "snapshotHandle is not set in VolumeSnapshotContent status"
-	msgUnavailableInvalidVolumeSnapshotContentStatusFmt = msgUnavailableInvalidVolumeSnapshotContentStatus + "name: %s"
+	msgUnavailableInvalidVolumeSnapshotContentStatusFmt = msgUnavailableInvalidVolumeSnapshotContentStatus + ", name: %s"
 )
 
 // statusPassOrWrapError accepts an error and and returns it unchanged if it is nil or a gRPC Status with a code other than Unknown.
