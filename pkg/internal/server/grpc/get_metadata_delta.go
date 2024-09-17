@@ -77,30 +77,36 @@ func (s *Server) validateGetMetadataDeltaRequest(req *api.GetMetadataDeltaReques
 }
 
 func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *api.GetMetadataDeltaRequest) (*csi.GetMetadataDeltaRequest, error) {
-	baseSnapshotHandle, driver, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.BaseSnapshotName)
+	vsiBase, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.BaseSnapshotName)
 	if err != nil {
 		return nil, err
 	}
 
-	if driver != s.driverName() {
+	if vsiBase.DriverName != s.driverName() {
 		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.BaseSnapshotName, s.driverName())
 	}
 
-	targetSnapshotHandle, driver, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.TargetSnapshotName)
+	vsiTarget, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.TargetSnapshotName)
 	if err != nil {
 		return nil, err
 	}
 
-	if driver != s.driverName() {
+	if vsiTarget.DriverName != s.driverName() {
 		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.TargetSnapshotName, s.driverName())
 	}
 
+	// the target was created after the base so use its secrets.
+	secretsMap, err := s.getSnapshotterCredentials(ctx, vsiTarget)
+	if err != nil {
+		return nil, err
+	}
+
 	return &csi.GetMetadataDeltaRequest{
-		BaseSnapshotId:   baseSnapshotHandle,
-		TargetSnapshotId: targetSnapshotHandle,
+		BaseSnapshotId:   vsiBase.SnapshotHandle,
+		TargetSnapshotId: vsiTarget.SnapshotHandle,
 		StartingOffset:   req.StartingOffset,
 		MaxResults:       req.MaxResults,
-		//TODO: set Secrets field
+		Secrets:          secretsMap,
 	}, nil
 }
 

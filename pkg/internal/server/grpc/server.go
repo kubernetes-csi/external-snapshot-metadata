@@ -23,7 +23,7 @@ import (
 	"strconv"
 	"sync"
 
-	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
+	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"

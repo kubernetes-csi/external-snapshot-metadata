@@ -26,7 +26,7 @@ import (
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
 	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	csirpc "github.com/kubernetes-csi/csi-lib-utils/rpc"
-	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v6/clientset/versioned"
+	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	"google.golang.org/grpc"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/rest"

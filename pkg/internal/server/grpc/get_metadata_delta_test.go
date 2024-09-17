@@ -18,6 +18,7 @@ package grpc
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"testing"
@@ -36,12 +37,10 @@ import (
 
 func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 	ctx := context.Background()
-
-	th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+	th := newTestHarness().WithMockCSIDriver(t).WithFakeClientAPIs()
 	defer th.TerminateMockCSIDriver()
-	rtWithCSI := th.RuntimeWithMockCSIDriver(t)
 
-	grpcServer := th.StartGRPCServer(t, rtWithCSI)
+	grpcServer := th.StartGRPCServer(t, th.Runtime())
 	defer th.StopGRPCServer(t)
 
 	client := th.GRPCSnapshotMetadataClient(t)
@@ -160,7 +159,7 @@ func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
 }
 
 func TestValidateGetMetadataDeltaRequest(t *testing.T) {
-	th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+	th := newTestHarness().WithFakeClientAPIs()
 	grpcServer := th.StartGRPCServer(t, th.Runtime())
 	defer th.StopGRPCServer(t)
 
@@ -250,20 +249,22 @@ func TestValidateGetMetadataDeltaRequest(t *testing.T) {
 }
 
 func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
-	th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
-	rt := th.Runtime()
-	grpcServer := th.StartGRPCServer(t, rt)
+	th := newTestHarness().WithFakeClientAPIs()
+	grpcServer := th.StartGRPCServer(t, th.Runtime())
 	defer th.StopGRPCServer(t)
+
+	expSecrets := convStringByteMapToStringStringMap(th.SecretData())
 
 	for _, tc := range []struct {
 		name                      string
 		apiRequest                *api.GetMetadataDeltaRequest
 		expectedCSIRequest        *csi.GetMetadataDeltaRequest
-		mockVolumeSnapshot        func(clientgotesting.Action) (bool, runtime.Object, error)
-		mockVolumeSnapshotContent func(clientgotesting.Action) (bool, runtime.Object, error)
+		fakeSecret                func(clientgotesting.Action) (bool, runtime.Object, error)
+		fakeVolumeSnapshot        func(clientgotesting.Action) (bool, runtime.Object, error)
+		fakeVolumeSnapshotContent func(clientgotesting.Action) (bool, runtime.Object, error)
 		expectError               bool
 		expStatusCode             codes.Code
-		expStatusMsg              string
+		expStatusMsgPat           string
 	}{
 		{
 			// valid case
@@ -277,10 +278,11 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				MaxResults:         256,
 			},
 			expectedCSIRequest: &csi.GetMetadataDeltaRequest{
-				BaseSnapshotId:   "snap-1-id",
-				TargetSnapshotId: "snap-2-id",
+				BaseSnapshotId:   th.HandleFromSnapshot("snap-1"),
+				TargetSnapshotId: th.HandleFromSnapshot("snap-2"),
 				StartingOffset:   0,
 				MaxResults:       256,
+				Secrets:          expSecrets,
 			},
 			expectError: false,
 		},
@@ -295,10 +297,11 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				MaxResults:         256,
 			},
 			expectedCSIRequest: &csi.GetMetadataDeltaRequest{
-				BaseSnapshotId:   "snap-1-id",
-				TargetSnapshotId: "snap-2-id",
+				BaseSnapshotId:   th.HandleFromSnapshot("snap-1"),
+				TargetSnapshotId: th.HandleFromSnapshot("snap-2"),
 				StartingOffset:   50,
 				MaxResults:       256,
+				Secrets:          expSecrets,
 			},
 			expectError: false,
 		},
@@ -313,17 +316,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
 				if ga.GetName() == "snap-doesnt-exist" {
 					return true, nil, fmt.Errorf("does not exist")
 				}
-				vs := volumeSnapshot(ga.GetName(), ga.GetNamespace())
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
 				return true, vs, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotFmt, "does not exist"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotFmt, "test-ns", "snap-doesnt-exist", "does not exist"),
 		},
 		{
 			// VolumeSnapshot resource with TargetSnapshotName doesn't exist
@@ -336,17 +339,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
 				if ga.GetName() == "snap-doesnt-exist" {
 					return true, nil, fmt.Errorf("does not exist")
 				}
-				vs := volumeSnapshot(ga.GetName(), ga.GetNamespace())
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
 				return true, vs, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotFmt, "does not exist"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotFmt, "test-ns", "snap-doesnt-exist", "does not exist"),
 		},
 		{
 			// VolumeSnapshot resource with BaseSnapshotName is not ready
@@ -359,17 +362,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vs := volumeSnapshot(ga.GetName(), ga.GetNamespace())
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
 				if ga.GetName() == "snap-not-ready" {
 					vs.Status.ReadyToUse = boolPtr(false)
 				}
 				return true, vs, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableVolumeSnapshotNotReadyFmt, "snap-not-ready"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableVolumeSnapshotNotReadyFmt, "snap-not-ready"),
 		},
 		{
 			// VolumeSnapshot resource with TargetSnapshotName is not ready
@@ -382,17 +385,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vs := volumeSnapshot(ga.GetName(), ga.GetNamespace())
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
 				if ga.GetName() == "snap-not-ready" {
 					vs.Status.ReadyToUse = boolPtr(false)
 				}
 				return true, vs, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableVolumeSnapshotNotReadyFmt, "snap-not-ready"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableVolumeSnapshotNotReadyFmt, "snap-not-ready"),
 		},
 		{
 			// Base snapshot with BoundVolumeSnapshotContent nil
@@ -405,17 +408,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vs := volumeSnapshot(ga.GetName(), ga.GetNamespace())
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
 				if ga.GetName() == "snap-with-no-vsc" {
 					vs.Status.BoundVolumeSnapshotContentName = nil
 				}
 				return true, vs, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotStatusFmt, "snap-with-no-vsc"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotStatusFmt, "snap-with-no-vsc"),
 		},
 		{
 			// Target snapshot with BoundVolumeSnapshotContent nil
@@ -428,17 +431,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vs := volumeSnapshot(ga.GetName(), ga.GetNamespace())
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
 				if ga.GetName() == "snap-with-no-vsc" {
 					vs.Status.BoundVolumeSnapshotContentName = nil
 				}
 				return true, vs, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotStatusFmt, "snap-with-no-vsc"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotStatusFmt, "snap-with-no-vsc"),
 		},
 		{
 			// VolumeSnapshotContent resource asssociated with base snapshot doesn't exist
@@ -451,17 +454,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				if ga.GetName() == "snap-content-doesnt-exist" {
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-content-doesnt-exist") {
 					return true, nil, fmt.Errorf("does not exist")
 				}
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
 				return true, vsc, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotContentFmt, "does not exist"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotContentFmt, th.ContentNameFromSnapshot("snap-content-doesnt-exist"), "does not exist"),
 		},
 		{
 			// VolumeSnapshotContent resource asssociated with target snapshot doesn't exist
@@ -474,17 +477,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				if ga.GetName() == "snap-content-doesnt-exist" {
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-content-doesnt-exist") {
 					return true, nil, fmt.Errorf("does not exist")
 				}
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
 				return true, vsc, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotContentFmt, "does not exist"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotContentFmt, th.ContentNameFromSnapshot("snap-content-doesnt-exist"), "does not exist"),
 		},
 		{
 			// VolumeSnapshotContent associated with base snapshot is not ready
@@ -497,17 +500,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
-				if ga.GetName() == "snap-with-content-not-ready" {
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-with-content-not-ready") {
 					vsc.Status.ReadyToUse = boolPtr(false)
 				}
 				return true, vsc, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableVolumeSnapshotContentNotReadyFmt, "snap-with-content-not-ready"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableVolumeSnapshotContentNotReadyFmt, th.ContentNameFromSnapshot("snap-with-content-not-ready")),
 		},
 		{
 			// VolumeSnapshotContent associated with target snapshot is not ready
@@ -520,17 +523,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
-				if ga.GetName() == "snap-with-content-not-ready" {
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-with-content-not-ready") {
 					vsc.Status.ReadyToUse = boolPtr(false)
 				}
 				return true, vsc, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableVolumeSnapshotContentNotReadyFmt, "snap-with-content-not-ready"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableVolumeSnapshotContentNotReadyFmt, th.ContentNameFromSnapshot("snap-with-content-not-ready")),
 		},
 		{
 			// VolumeSnapshotContent associated with base snapshot has empty snapshotHandler
@@ -543,17 +546,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
-				if ga.GetName() == "snap-with-content-no-snaphandle" {
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-with-content-no-snaphandle") {
 					vsc.Status.SnapshotHandle = nil
 				}
 				return true, vsc, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotContentStatusFmt, "snap-with-content-no-snaphandle"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotContentStatusFmt, th.ContentNameFromSnapshot("snap-with-content-no-snaphandle")),
 		},
 		{
 			// VolumeSnapshotContent associated with target snapshot has empty snapshotHandler
@@ -566,17 +569,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
-				if ga.GetName() == "snap-with-content-no-snaphandle" {
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-with-content-no-snaphandle") {
 					vsc.Status.SnapshotHandle = nil
 				}
 				return true, vsc, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.Unavailable,
-			expStatusMsg:  fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotContentStatusFmt, "snap-with-content-no-snaphandle"),
+			expectError:     true,
+			expStatusCode:   codes.Unavailable,
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotContentStatusFmt, th.ContentNameFromSnapshot("snap-with-content-no-snaphandle")),
 		},
 		{
 			// VolumeSnapshotContent associated with source snapshot has unexpected driver
@@ -589,17 +592,17 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
-				if ga.GetName() == "snap-with-invalid-driver" {
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-with-invalid-driver") {
 					vsc.Spec.Driver = *stringPtr("driver-unexpected")
 				}
 				return true, vsc, nil
 			},
-			expectError:   true,
-			expStatusCode: codes.InvalidArgument,
-			expStatusMsg:  fmt.Sprintf(msgInvalidArgumentSnaphotDriverInvalidFmt, "snap-with-invalid-driver", th.DriverName),
+			expectError:     true,
+			expStatusCode:   codes.InvalidArgument,
+			expStatusMsgPat: fmt.Sprintf(msgInvalidArgumentSnaphotDriverInvalidFmt, "snap-with-invalid-driver", th.DriverName),
 		},
 		{
 			// VolumeSnapshotContent associated with target snapshot has unexpected driver
@@ -612,33 +615,57 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 				StartingOffset:     0,
 				MaxResults:         256,
 			},
-			mockVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
-				vsc := volumeSnapshotContent(ga.GetName(), th.DriverName)
-				if ga.GetName() == "snap-with-invalid-driver" {
+				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
+				if ga.GetName() == th.ContentNameFromSnapshot("snap-with-invalid-driver") {
 					vsc.Spec.Driver = *stringPtr("driver-unexpected")
 				}
 				return true, vsc, nil
 			},
+			expectError:     true,
+			expStatusCode:   codes.InvalidArgument,
+			expStatusMsgPat: fmt.Sprintf(msgInvalidArgumentSnaphotDriverInvalidFmt, "snap-with-invalid-driver", th.DriverName),
+		},
+		{
+			name: "error-fetching-secrets",
+			apiRequest: &api.GetMetadataDeltaRequest{
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-with-invalid-secrets",
+				Namespace:          "test-ns",
+				SecurityToken:      "token",
+				StartingOffset:     0,
+				MaxResults:         256,
+			},
+			fakeSecret: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				return true, nil, errors.New("secret-get-error")
+			},
 			expectError:   true,
-			expStatusCode: codes.InvalidArgument,
-			expStatusMsg:  fmt.Sprintf(msgInvalidArgumentSnaphotDriverInvalidFmt, "snap-with-invalid-driver", th.DriverName),
+			expStatusCode: codes.Unavailable,
+			// the error comes from an external package so use a regex to match salient pieces.
+			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetCredentials+": .*%s.*$", "secret-get-error"),
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			if tc.mockVolumeSnapshot != nil {
-				th.fakeSnapshotClient.PrependReactor("get", "volumesnapshots", tc.mockVolumeSnapshot)
+			th.FakeCountReactors()              // must remove test case reactors
+			defer th.FakePopPrependedReactors() // to maintain order independence
+
+			if tc.fakeSecret != nil {
+				th.FakeKubeClient.PrependReactor("get", "secrets", tc.fakeSecret)
 			}
-			if tc.mockVolumeSnapshotContent != nil {
-				th.fakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", tc.mockVolumeSnapshotContent)
+			if tc.fakeVolumeSnapshot != nil {
+				th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", tc.fakeVolumeSnapshot)
+			}
+			if tc.fakeVolumeSnapshotContent != nil {
+				th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", tc.fakeVolumeSnapshotContent)
 			}
 			csiReq, err := grpcServer.convertToCSIGetMetadataDeltaRequest(context.TODO(), tc.apiRequest)
 			if tc.expectError {
 				assert.Error(t, err)
 				st, ok := status.FromError(err)
 				assert.True(t, ok)
-				assert.Equal(t, st.Code(), tc.expStatusCode)
-				assert.Equal(t, st.Message(), tc.expStatusMsg)
+				assert.Equal(t, tc.expStatusCode, st.Code())
+				assert.Regexp(t, tc.expStatusMsgPat, st.Message())
 				return
 			}
 			assert.NoError(t, err)
@@ -648,8 +675,10 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 }
 
 func validateCSIGetMetadataDeltaRequest(t *testing.T, csiReq, expectedCSIReq *csi.GetMetadataDeltaRequest) {
+	t.Helper()
 	assert.Equal(t, csiReq.BaseSnapshotId, expectedCSIReq.BaseSnapshotId)
 	assert.Equal(t, csiReq.TargetSnapshotId, expectedCSIReq.TargetSnapshotId)
 	assert.Equal(t, csiReq.StartingOffset, expectedCSIReq.StartingOffset)
 	assert.Equal(t, csiReq.MaxResults, expectedCSIReq.MaxResults)
+	assert.Equal(t, csiReq.Secrets, expectedCSIReq.Secrets)
 }
