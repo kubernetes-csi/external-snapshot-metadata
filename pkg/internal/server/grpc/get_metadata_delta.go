@@ -95,6 +95,10 @@ func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *a
 		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.TargetSnapshotName, s.driverName())
 	}
 
+	if vsiBase.SourceVolume != vsiTarget.SourceVolume {
+		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentDiffSnapshotSourceVolumes)
+	}
+
 	// the target was created after the base so use its secrets.
 	secretsMap, err := s.getSnapshotterCredentials(ctx, vsiTarget)
 	if err != nil {

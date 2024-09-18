@@ -28,6 +28,7 @@ import (
 type volSnapshotInfo struct {
 	DriverName                string
 	SnapshotHandle            string
+	SourceVolume              string
 	VolumeSnapshot            *snapshotv1.VolumeSnapshot
 	VolumeSnapshotContentName string
 }
@@ -39,6 +40,11 @@ func (s *Server) getVolSnapshotInfo(ctx context.Context, namespace, vsName strin
 		return nil, err
 	}
 
+	sourceVolume := ""
+	if vs.Spec.Source.PersistentVolumeClaimName != nil {
+		sourceVolume = *vs.Spec.Source.PersistentVolumeClaimName
+	}
+
 	vsc, err := s.getVolumeSnapshotContent(ctx, *vs.Status.BoundVolumeSnapshotContentName)
 	if err != nil {
 		return nil, err
@@ -47,6 +53,7 @@ func (s *Server) getVolSnapshotInfo(ctx context.Context, namespace, vsName strin
 	return &volSnapshotInfo{
 		DriverName:                vsc.Spec.Driver,
 		SnapshotHandle:            *vsc.Status.SnapshotHandle,
+		SourceVolume:              sourceVolume,
 		VolumeSnapshot:            vs,
 		VolumeSnapshotContentName: vsc.Name,
 	}, nil
