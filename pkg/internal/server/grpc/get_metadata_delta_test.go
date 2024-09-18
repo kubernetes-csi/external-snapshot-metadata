@@ -628,6 +628,27 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 			expStatusMsgPat: fmt.Sprintf(msgInvalidArgumentSnaphotDriverInvalidFmt, "snap-with-invalid-driver", th.DriverName),
 		},
 		{
+			// BaseSnapshot and TargetSnapshot does not belong to the same volume
+			name: "snapshot-with-diff-source-volume-error",
+			apiRequest: &api.GetMetadataDeltaRequest{
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+				Namespace:          "test-ns",
+				SecurityToken:      "token",
+				StartingOffset:     0,
+				MaxResults:         256,
+			},
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
+				vs.Spec.Source.PersistentVolumeClaimName = stringPtr("volume-" + ga.GetName())
+				return true, vs, nil
+			},
+			expectError:     true,
+			expStatusCode:   codes.InvalidArgument,
+			expStatusMsgPat: fmt.Sprintf(msgInvalidArgumentDiffSnapshotSourceVolumes),
+		},
+		{
 			name: "error-fetching-secrets",
 			apiRequest: &api.GetMetadataDeltaRequest{
 				BaseSnapshotName:   "snap-1",
