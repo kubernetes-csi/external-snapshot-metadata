@@ -22,6 +22,7 @@ import (
 	authv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 )
 
 // TokenAuthenticator authenticates the user using K8s TokenReview API
@@ -45,6 +46,7 @@ func (t *TokenAuthenticator) Authenticate(ctx context.Context, token string, aud
 	}
 	auth, err := t.kubeClient.AuthenticationV1().TokenReviews().Create(ctx, &tokenReview, metav1.CreateOptions{})
 	if err != nil {
+		klog.FromContext(ctx).Error(err, "TokenReviews.Create", "audiences", audience)
 		return false, nil, err
 	}
 	if !auth.Status.Authenticated {

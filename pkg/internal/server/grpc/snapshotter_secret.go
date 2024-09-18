@@ -25,6 +25,7 @@ import (
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/klog/v2"
 )
 
 // getSnapshotterCredentials returns the snapshotter secret associated with VolumeSnapshotClass, if any.
@@ -43,6 +44,7 @@ func (s *Server) getSnapshotterCredentials(ctx context.Context, vsi *volSnapshot
 	// snapshotutils.GetCredentials gets the secrets for the external-snapshotter CSI calls.
 	secretMap, err := snapshotutils.GetCredentials(s.kubeClient(), secretRef)
 	if err != nil {
+		klog.FromContext(ctx).Error(err, msgUnavailableFailedToGetCredentials)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetCredentialsFmt, err) // error contains secret ref
 	}
 
@@ -70,6 +72,7 @@ func (s *Server) getSnapshotterSecretRef(ctx context.Context, vsi *volSnapshotIn
 	// snapshotutils.GetSecretReference handles template substitution in name and namespace in the external-snapshotter.
 	secretRef, err := snapshotutils.GetSecretReference(snapshotutils.SnapshotterSecretParams, vsClass.Parameters, vsi.VolumeSnapshotContentName, vsi.VolumeSnapshot)
 	if err != nil {
+		klog.FromContext(ctx).Error(err, msgUnavailableInvalidSecretInVolumeSnapshotClass, "volumeSnapshotClassName", vsClass.Name)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableInvalidSecretInVolumeSnapshotClassFmt, err) // error describes what could be wrong
 	}
 
@@ -79,6 +82,7 @@ func (s *Server) getSnapshotterSecretRef(ctx context.Context, vsi *volSnapshotIn
 func (s *Server) getVolumeSnapshotClass(ctx context.Context, volumeSnapshotClassName string) (*snapshotv1.VolumeSnapshotClass, error) {
 	vsc, err := s.snapshotClient().SnapshotV1().VolumeSnapshotClasses().Get(ctx, volumeSnapshotClassName, metav1.GetOptions{})
 	if err != nil {
+		klog.FromContext(ctx).Error(err, msgUnavailableFailedToGetVolumeSnapshotClass, "volumeSnapshotClassName", volumeSnapshotClassName)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotClassFmt, volumeSnapshotClassName, err)
 	}
 
@@ -88,6 +92,7 @@ func (s *Server) getVolumeSnapshotClass(ctx context.Context, volumeSnapshotClass
 func (s *Server) getDefaultVolumeSnapshotClassForDriver(ctx context.Context, driverName string) (*snapshotv1.VolumeSnapshotClass, error) {
 	vscList, err := s.snapshotClient().SnapshotV1().VolumeSnapshotClasses().List(ctx, metav1.ListOptions{})
 	if err != nil {
+		klog.FromContext(ctx).Error(err, msgUnavailableFailedToListVolumeSnapshotClasses)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToListVolumeSnapshotClassesFmt, err)
 	}
 
@@ -105,6 +110,7 @@ func (s *Server) getDefaultVolumeSnapshotClassForDriver(ctx context.Context, dri
 
 		if annValue == "true" {
 			if idxFound != -1 { // it is an error if there are multiple defaults
+				klog.FromContext(ctx).Error(err, msgUnavailableMultipleDefaultVolumeSnapshotClassesForDriver, "driver", driverName)
 				return nil, status.Errorf(codes.Unavailable, msgUnavailableMultipleDefaultVolumeSnapshotClassesForDriverFmt, driverName)
 			}
 
@@ -116,5 +122,6 @@ func (s *Server) getDefaultVolumeSnapshotClassForDriver(ctx context.Context, dri
 		return &vscList.Items[idxFound], nil
 	}
 
+	klog.FromContext(ctx).Error(err, msgUnavailableNoDefaultVolumeSnapshotClassForDriver, "driver", driverName)
 	return nil, status.Errorf(codes.Unavailable, msgUnavailableNoDefaultVolumeSnapshotClassForDriverFmt, driverName)
 }

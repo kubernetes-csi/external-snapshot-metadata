@@ -24,6 +24,7 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/klog/v2"
 )
 
 // SARAuthorizer authorizes user using K8s SubjectAccessReview API
@@ -52,6 +53,7 @@ func (s *SARAuthorizer) Authorize(ctx context.Context, userInfo *authv1.UserInfo
 	}
 	sarResp, err := s.kubeClient.AuthorizationV1().SubjectAccessReviews().Create(ctx, sar, metav1.CreateOptions{})
 	if err != nil {
+		klog.FromContext(ctx).Error(err, "SubjectAccessReviews.Create", "userInfo", userInfo)
 		return authorizer.DecisionDeny, "", err
 	}
 	if !sarResp.Status.Allowed || sarResp.Status.Denied {

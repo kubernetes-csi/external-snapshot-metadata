@@ -62,10 +62,12 @@ func (s *Server) shuttingDown() {
 
 // isCSIDriverReady is a helper for the handlers that returns the appropriate error if the
 // CSI driver is not ready.
-func (s *Server) isCSIDriverReady() error {
+func (s *Server) isCSIDriverReady(ctx context.Context) error {
 	if s.isReady() {
 		return nil
 	}
+
+	klog.FromContext(ctx).Error(nil, msgUnavailableCSIDriverNotReady, "driverName", s.driverName())
 
 	return status.Errorf(codes.Unavailable, msgUnavailableCSIDriverNotReady)
 }
