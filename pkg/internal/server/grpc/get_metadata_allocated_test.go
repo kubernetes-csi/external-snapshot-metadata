@@ -26,6 +26,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,6 +34,7 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/csiclientmocks"
 )
 
 func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
@@ -472,4 +474,273 @@ func validateCSIGetMetadataAllocatedRequest(t *testing.T, csiReq, expectedCSIReq
 	assert.Equal(t, csiReq.StartingOffset, expectedCSIReq.StartingOffset)
 	assert.Equal(t, csiReq.MaxResults, expectedCSIReq.MaxResults)
 	assert.Equal(t, csiReq.Secrets, expectedCSIReq.Secrets)
+}
+
+type mockCSIMetadataAllocatedResponse struct {
+	response *csi.GetMetadataAllocatedResponse
+	err      error
+}
+
+func TestStreamGetMetadataAllocatedResponse(t *testing.T) {
+	ctx := context.Background()
+	th := newTestHarness().WithMockCSIDriver(t).WithFakeClientAPIs()
+	defer th.TerminateMockCSIDriver()
+
+	grpcServer := th.StartGRPCServer(t, th.Runtime())
+	defer th.StopGRPCServer(t)
+
+	for _, tc := range []struct {
+		name                              string
+		req                               *api.GetMetadataAllocatedRequest
+		expResponse                       *api.GetMetadataAllocatedResponse
+		mockCSIMetadataAllocatedResponses []mockCSIMetadataAllocatedResponse
+		mockK8sStreamError                error
+		expectStreamError                 bool
+		expectK8sStreamError              bool
+		expStatusCode                     codes.Code
+		expStatusMsg                      string
+	}{
+		{
+			name: "success",
+			req: &api.GetMetadataAllocatedRequest{
+				SnapshotName:   "snap-1",
+				StartingOffset: 0,
+				MaxResults:     2,
+			},
+			mockCSIMetadataAllocatedResponses: []mockCSIMetadataAllocatedResponse{
+				{
+					response: &csi.GetMetadataAllocatedResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 0,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+				{
+					response: &csi.GetMetadataAllocatedResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 1,
+								SizeBytes:  1024,
+							},
+							{
+								ByteOffset: 2,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+			},
+			expResponse: &api.GetMetadataAllocatedResponse{
+				BlockMetadataType:   api.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*api.BlockMetadata{
+					{
+						ByteOffset: 0,
+						SizeBytes:  1024,
+					},
+					{
+						ByteOffset: 1,
+						SizeBytes:  1024,
+					},
+					{
+						ByteOffset: 2,
+						SizeBytes:  1024,
+					},
+				},
+			},
+		},
+		// Starting offset non-zero
+		{
+			name: "success",
+			req: &api.GetMetadataAllocatedRequest{
+				SnapshotName:   "snap-1",
+				StartingOffset: 25,
+				MaxResults:     1,
+			},
+			mockCSIMetadataAllocatedResponses: []mockCSIMetadataAllocatedResponse{
+				{
+					response: &csi.GetMetadataAllocatedResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 25,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+				{
+
+					response: &csi.GetMetadataAllocatedResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 26,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+			},
+			expResponse: &api.GetMetadataAllocatedResponse{
+				BlockMetadataType:   api.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*api.BlockMetadata{
+					{
+						ByteOffset: 25,
+						SizeBytes:  1024,
+					},
+					{
+						ByteOffset: 26,
+						SizeBytes:  1024,
+					},
+				},
+			},
+		},
+
+		// CSI driver response error
+		{
+			name: "csi-stream-error",
+			req: &api.GetMetadataAllocatedRequest{
+				SnapshotName:   "snap-1",
+				StartingOffset: 25,
+				MaxResults:     2,
+			},
+			mockCSIMetadataAllocatedResponses: []mockCSIMetadataAllocatedResponse{
+				{
+					response: &csi.GetMetadataAllocatedResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 25,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+				{
+					response: nil,
+					err:      io.ErrUnexpectedEOF,
+				},
+			},
+			// expect incomplete response
+			expResponse: &api.GetMetadataAllocatedResponse{
+				BlockMetadataType:   api.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*api.BlockMetadata{
+					{
+						ByteOffset: 25,
+						SizeBytes:  1024,
+					},
+				},
+			},
+			expectStreamError: true,
+			expStatusCode:     codes.Internal,
+			expStatusMsg:      msgInternalFailedCSIDriverResponse,
+		},
+
+		// K8s stream response error
+		{
+			name: "k8s-stream-error",
+			req: &api.GetMetadataAllocatedRequest{
+				SnapshotName:   "snap-1",
+				StartingOffset: 0,
+				MaxResults:     2,
+			},
+			mockCSIMetadataAllocatedResponses: []mockCSIMetadataAllocatedResponse{
+				{
+					response: &csi.GetMetadataAllocatedResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 0,
+								SizeBytes:  1024,
+							},
+						},
+					},
+				},
+			},
+			mockK8sStreamError: errors.New("K8s stream send error"),
+			expectStreamError:  true,
+			expStatusCode:      codes.Internal,
+			expStatusMsg:       msgInternalFailedToSendResponse,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// mock CSI server streaming
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			csiClient := csiclientmocks.NewMockSnapshotMetadataClient(mockController)
+			mockCSIStream := csiclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient(mockController)
+
+			csiClient.EXPECT().GetMetadataAllocated(gomock.Any(), gomock.Any()).Return(mockCSIStream, nil)
+			for _, r := range tc.mockCSIMetadataAllocatedResponses {
+				mockCSIStream.EXPECT().Recv().Return(r.response, r.err)
+			}
+			// mock end of stream
+			if !tc.expectStreamError {
+				mockCSIStream.EXPECT().Recv().Return(nil, io.EOF)
+			}
+
+			csiReq, err := grpcServer.convertToCSIGetMetadataAllocatedRequest(ctx, tc.req)
+			assert.NoError(t, err)
+
+			csiStream, err := csiClient.GetMetadataAllocated(ctx, csiReq)
+			assert.NoError(t, err)
+
+			sms := &fakeStreamServerSnapshotAllocated{err: tc.mockK8sStreamError}
+
+			errStream := grpcServer.streamGetMetadataAllocatedResponse(sms, csiStream)
+			if tc.expectStreamError {
+				assert.NoError(t, err)
+				st, ok := status.FromError(errStream)
+				assert.True(t, ok)
+				assert.Equal(t, tc.expStatusCode, st.Code())
+				assert.ErrorContains(t, errStream, tc.expStatusMsg)
+				// Expect incomplete/partial response
+				assert.Equal(t, true, sms.verifyResponse(tc.expResponse))
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, true, sms.verifyResponse(tc.expResponse))
+		})
+	}
+}
+
+type fakeStreamServerSnapshotAllocated struct {
+	grpc.ServerStream
+	response *api.GetMetadataAllocatedResponse
+	err      error
+}
+
+func (f *fakeStreamServerSnapshotAllocated) Send(m *api.GetMetadataAllocatedResponse) error {
+	if f.err != nil {
+		return f.err
+	}
+	if f.response == nil {
+		f.response = m
+		return nil
+	}
+	f.response.BlockMetadata = append(f.response.BlockMetadata, m.BlockMetadata...)
+	return nil
+}
+
+func (f *fakeStreamServerSnapshotAllocated) verifyResponse(expectedResponse *api.GetMetadataAllocatedResponse) bool {
+	return f.response.String() == expectedResponse.String()
 }
