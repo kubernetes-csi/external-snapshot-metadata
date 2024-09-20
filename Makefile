@@ -38,3 +38,8 @@ lint:
 CMDS=csi-snapshot-metadata
 
 include release-tools/build.make
+
+.PHONY: test
+# Extend the test target to include lint
+test: lint
+	$(MAKE) -f release-tools/build.make test
