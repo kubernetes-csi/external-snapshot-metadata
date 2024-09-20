@@ -23,14 +23,16 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
 
 func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stream api.SnapshotMetadata_GetMetadataAllocatedServer) error {
-	ctx := stream.Context()
+	ctx := s.getMetadataAllocatedContextWithLogger(req, stream)
 
 	if err := s.validateGetMetadataAllocatedRequest(req); err != nil {
+		klog.FromContext(ctx).Error(err, "validation failed")
 		return err
 	}
 
@@ -38,7 +40,7 @@ func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stre
 		return err
 	}
 
-	if err := s.isCSIDriverReady(); err != nil {
+	if err := s.isCSIDriverReady(ctx); err != nil {
 		return err
 	}
 
@@ -48,12 +50,26 @@ func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stre
 	}
 
 	// Invoke the CSI Driver's GetMetadataDelta gRPC and stream the response back to client
+	klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("calling CSI driver", "snapshotId", csiReq.SnapshotId)
 	csiStream, err := csi.NewSnapshotMetadataClient(s.csiConnection()).GetMetadataAllocated(ctx, csiReq)
 	if err != nil {
 		return err
 	}
 
-	return s.streamGetMetadataAllocatedResponse(stream, csiStream)
+	return s.streamGetMetadataAllocatedResponse(ctx, stream, csiStream)
+}
+
+// getMetadataAllocatedContextWithLogger returns the stream context with an embedded
+// contextual logger primed with a description of the request.
+func (s *Server) getMetadataAllocatedContextWithLogger(req *api.GetMetadataAllocatedRequest, stream api.SnapshotMetadata_GetMetadataAllocatedServer) context.Context {
+	return klog.NewContext(stream.Context(),
+		klog.LoggerWithValues(klog.Background(),
+			"op", s.OperationID("GetMetadataAllocated"),
+			"namespace", req.Namespace,
+			"snapshotName", req.SnapshotName,
+			"startingOffset", req.StartingOffset,
+			"maxResults", req.MaxResults,
+		))
 }
 
 func (s *Server) validateGetMetadataAllocatedRequest(req *api.GetMetadataAllocatedRequest) error {
@@ -79,7 +95,9 @@ func (s *Server) convertToCSIGetMetadataAllocatedRequest(ctx context.Context, re
 	}
 
 	if vsi.DriverName != s.driverName() {
-		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.SnapshotName, s.driverName())
+		err = status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.SnapshotName, s.driverName())
+		klog.FromContext(ctx).Error(err, "invalid driver")
+		return nil, err
 	}
 
 	secretsMap, err := s.getSnapshotterCredentials(ctx, vsi)
@@ -95,12 +113,15 @@ func (s *Server) convertToCSIGetMetadataAllocatedRequest(ctx context.Context, re
 	}, nil
 }
 
-func (s *Server) streamGetMetadataAllocatedResponse(clientStream api.SnapshotMetadata_GetMetadataAllocatedServer, csiStream csi.SnapshotMetadata_GetMetadataAllocatedClient) error {
+func (s *Server) streamGetMetadataAllocatedResponse(ctx context.Context, clientStream api.SnapshotMetadata_GetMetadataAllocatedServer, csiStream csi.SnapshotMetadata_GetMetadataAllocatedClient) error {
 	for {
 		csiResp, err := csiStream.Recv()
 		if err == io.EOF {
+			klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("stream EOF")
 			return nil
 		}
+
+		//TODO: stream logging with progress
 
 		if err != nil {
 			return s.statusPassOrWrapError(err, codes.Internal, msgInternalFailedCSIDriverResponseFmt, err)

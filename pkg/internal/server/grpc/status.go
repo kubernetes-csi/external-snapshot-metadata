@@ -22,12 +22,14 @@ import (
 )
 
 const (
-	mgsInternalFailedToAuthorizePrefix    = "failed to authorize the user"
 	mgsInternalFailedToAuthorizeFmt       = mgsInternalFailedToAuthorizePrefix + ": %v"
-	msgInternalFailedToAuthenticatePrefix = "failed to authenticate user"
-	msgInternalFailedToAuthenticateFmt    = msgInternalFailedToAuthenticatePrefix + ": %v"
+	mgsInternalFailedToAuthorizePrefix    = "failed to authorize the user"
 	msgInternalFailedCSIDriverResponse    = "failed to get response from CSI driver"
 	msgInternalFailedCSIDriverResponseFmt = msgInternalFailedCSIDriverResponse + ": %v"
+	msgInternalFailedToAuthenticateFmt    = msgInternalFailedToAuthenticatePrefix + ": %v"
+	msgInternalFailedToAuthenticatePrefix = "failed to authenticate user"
+	msgInternalFailedToFindCR             = "failed to find the SnapshotMetadataService CR for driver"
+	msgInternalFailedToFindCRFmt          = msgInternalFailedToFindCR + " '%s': %v"
 	msgInternalFailedToSendResponse       = "failed to send response"
 	msgInternalFailedtoSendResponseFmt    = msgInternalFailedToSendResponse + ": %v"
 

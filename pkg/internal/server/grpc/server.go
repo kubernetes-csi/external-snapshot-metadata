@@ -22,6 +22,7 @@ import (
 	"net"
 	"strconv"
 	"sync"
+	"sync/atomic"
 
 	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	"google.golang.org/grpc"
@@ -36,6 +37,10 @@ import (
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 )
 
+const (
+	HandlerTraceLogLevel = 4
+)
+
 type ServerConfig struct {
 	Runtime *runtime.Runtime
 }
@@ -46,6 +51,7 @@ type Server struct {
 	config       ServerConfig
 	grpcServer   *grpc.Server
 	healthServer *health.Server
+	opNumber     int64
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -144,4 +150,9 @@ func (s *Server) Stop() {
 // CSIDriverIsReady is used to notify the server that the CSI driver is available for use.
 func (s *Server) CSIDriverIsReady() {
 	s.setReady()
+}
+
+// OperationID generates a unique identifier for an operation.
+func (s *Server) OperationID(op string) string {
+	return fmt.Sprintf("%s-%d", op, atomic.AddInt64(&s.opNumber, 1))
 }

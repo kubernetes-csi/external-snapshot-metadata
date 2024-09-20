@@ -23,14 +23,16 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
 
 func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
-	ctx := stream.Context()
+	ctx := s.getMetadataDeltaContextWithLogger(req, stream)
 
 	if err := s.validateGetMetadataDeltaRequest(req); err != nil {
+		klog.FromContext(ctx).Error(err, "validation failed")
 		return err
 	}
 
@@ -38,7 +40,7 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 		return err
 	}
 
-	if err := s.isCSIDriverReady(); err != nil {
+	if err := s.isCSIDriverReady(ctx); err != nil {
 		return err
 	}
 
@@ -48,12 +50,25 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 	}
 
 	// Invoke the CSI Driver's GetMetadataDelta gRPC and stream the response back to client
+	klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("calling CSI driver", "baseSnapshotId", csiReq.BaseSnapshotId, "targetSnapshotId", csiReq.TargetSnapshotId)
 	csiStream, err := csi.NewSnapshotMetadataClient(s.csiConnection()).GetMetadataDelta(ctx, csiReq)
 	if err != nil {
 		return err
 	}
 
-	return s.streamGetMetadataDeltaResponse(stream, csiStream)
+	return s.streamGetMetadataDeltaResponse(ctx, stream, csiStream)
+}
+
+func (s *Server) getMetadataDeltaContextWithLogger(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) context.Context {
+	return klog.NewContext(stream.Context(),
+		klog.LoggerWithValues(klog.Background(),
+			"op", s.OperationID("GetMetadataDelta"),
+			"namespace", req.Namespace,
+			"baseSnapshotName", req.BaseSnapshotName,
+			"targetSnapshotName", req.TargetSnapshotName,
+			"startingOffset", req.StartingOffset,
+			"maxResults", req.MaxResults,
+		))
 }
 
 func (s *Server) validateGetMetadataDeltaRequest(req *api.GetMetadataDeltaRequest) error {
@@ -83,7 +98,9 @@ func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *a
 	}
 
 	if vsiBase.DriverName != s.driverName() {
-		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.BaseSnapshotName, s.driverName())
+		err = status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.BaseSnapshotName, s.driverName())
+		klog.FromContext(ctx).Error(err, "invalid driver")
+		return nil, err
 	}
 
 	vsiTarget, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.TargetSnapshotName)
@@ -92,10 +109,13 @@ func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *a
 	}
 
 	if vsiTarget.DriverName != s.driverName() {
-		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.TargetSnapshotName, s.driverName())
+		err = status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.TargetSnapshotName, s.driverName())
+		klog.FromContext(ctx).Error(err, "invalid driver")
+		return nil, err
 	}
 
 	if vsiBase.SourceVolume != vsiTarget.SourceVolume {
+		klog.FromContext(ctx).Error(nil, msgInvalidArgumentDiffSnapshotSourceVolumes)
 		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentDiffSnapshotSourceVolumes)
 	}
 
@@ -114,12 +134,15 @@ func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *a
 	}, nil
 }
 
-func (s *Server) streamGetMetadataDeltaResponse(clientStream api.SnapshotMetadata_GetMetadataDeltaServer, csiStream csi.SnapshotMetadata_GetMetadataDeltaClient) error {
+func (s *Server) streamGetMetadataDeltaResponse(ctx context.Context, clientStream api.SnapshotMetadata_GetMetadataDeltaServer, csiStream csi.SnapshotMetadata_GetMetadataDeltaClient) error {
 	for {
 		csiResp, err := csiStream.Recv()
 		if err == io.EOF {
+			klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("stream EOF")
 			return nil
 		}
+
+		//TODO: stream logging with progress
 
 		if err != nil {
 			return s.statusPassOrWrapError(err, codes.Internal, msgInternalFailedCSIDriverResponseFmt, err)

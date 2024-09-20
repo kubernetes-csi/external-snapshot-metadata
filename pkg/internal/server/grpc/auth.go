@@ -25,6 +25,7 @@ import (
 	authv1 "k8s.io/api/authentication/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kauthorizer "k8s.io/apiserver/pkg/authorization/authorizer"
+	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/authn"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/authz"
@@ -37,6 +38,7 @@ func (s *Server) authenticateAndAuthorize(ctx context.Context, token string, nam
 		return status.Errorf(codes.Internal, msgInternalFailedToAuthenticateFmt, err)
 	}
 	if !authenticated {
+		klog.FromContext(ctx).Error(err, msgUnauthenticatedUser, "userInfo", userInfo)
 		return status.Error(codes.Unauthenticated, msgUnauthenticatedUser)
 	}
 
@@ -47,6 +49,7 @@ func (s *Server) authenticateAndAuthorize(ctx context.Context, token string, nam
 		return status.Errorf(codes.Internal, mgsInternalFailedToAuthorizeFmt, err)
 	}
 	if decision != kauthorizer.DecisionAllow {
+		klog.FromContext(ctx).Error(err, msgPermissionDeniedPrefix, "userInfo", userInfo)
 		return status.Errorf(codes.PermissionDenied, msgPermissionDeniedFmt, reason)
 	}
 
@@ -68,7 +71,8 @@ func (s *Server) authenticateRequest(ctx context.Context, securityToken string) 
 func (s *Server) getAudienceForDriver(ctx context.Context) (string, error) {
 	sms, err := s.cbtClient().CbtV1alpha1().SnapshotMetadataServices().Get(ctx, s.driverName(), metav1.GetOptions{})
 	if err != nil {
-		return "", fmt.Errorf("failed to get SnapshotMetadataService resource for driver %s: %v", s.driverName(), err)
+		klog.FromContext(ctx).Error(err, msgInternalFailedToFindCR, "driver", s.driverName())
+		return "", fmt.Errorf(msgInternalFailedToFindCRFmt, s.driverName(), err)
 	}
 
 	return sms.Spec.Audience, nil

@@ -17,6 +17,8 @@ limitations under the License.
 package grpc
 
 import (
+	"context"
+	"sync"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -107,7 +109,7 @@ func TestNewServer(t *testing.T) {
 		}
 
 		assert.False(t, s.isReady()) // not yet ready
-		err = s.isCSIDriverReady()
+		err = s.isCSIDriverReady(context.Background())
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
 		assert.True(t, ok)
@@ -117,10 +119,43 @@ func TestNewServer(t *testing.T) {
 		s.CSIDriverIsReady()
 
 		assert.True(t, s.isReady()) // now ready!
-		assert.NoError(t, s.isCSIDriverReady())
+		assert.NoError(t, s.isCSIDriverReady(context.Background()))
 
 		s.Stop()
 		assert.False(t, s.isReady())
-		assert.Error(t, s.isCSIDriverReady())
+		assert.Error(t, s.isCSIDriverReady(context.Background()))
 	})
+}
+
+func TestServerOperationID(t *testing.T) {
+	s := &Server{}
+
+	var (
+		opName = "opName"
+		numOps = 30
+		opIDs  = sync.Map{}
+		wg     sync.WaitGroup
+	)
+
+	wg.Add(numOps)
+
+	for i := 0; i < numOps; i++ {
+		go func() {
+			op := s.OperationID(opName) // use the same operation name
+			_, loaded := opIDs.LoadOrStore(op, struct{}{})
+			assert.False(t, loaded)
+			wg.Done()
+		}()
+	}
+
+	wg.Wait()
+
+	count := 0
+	opIDs.Range(func(key, value any) bool {
+		count++
+		opID := key.(string)
+		assert.Contains(t, opID, opName)
+		return true
+	})
+	assert.Equal(t, numOps, count) // all ids distinct
 }
