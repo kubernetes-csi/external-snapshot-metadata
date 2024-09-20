@@ -27,6 +27,11 @@ proto:
 crd:
 	@ cd client && ./hack/update-crd.sh
 
+.PHONY: lint
+# Run golangci-lint
+lint:
+	golangci-lint run
+
 
 # Include release-tools
 
