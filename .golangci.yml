@@ -28,8 +28,10 @@ run:
 
 issues:
   exclude-dirs:
-    - ^client/    # generated code
-    - ^pkg/api/   # generated code
+    - ^client/            # generated code
+    - ^pkg/api/           # generated code
+    - ^pkg/csiclientmocks # generated code
+    - ^pkg/k8sclientmocks # generated code
   exclude-files:
     - ^release-tools/filter-junit.go
   exclude-rules:
