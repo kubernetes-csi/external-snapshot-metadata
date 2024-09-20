@@ -26,6 +26,7 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
+	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -33,6 +34,7 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/csiclientmocks"
 )
 
 func TestGetMetadataDeltaViaGRPCClient(t *testing.T) {
@@ -702,4 +704,277 @@ func validateCSIGetMetadataDeltaRequest(t *testing.T, csiReq, expectedCSIReq *cs
 	assert.Equal(t, csiReq.StartingOffset, expectedCSIReq.StartingOffset)
 	assert.Equal(t, csiReq.MaxResults, expectedCSIReq.MaxResults)
 	assert.Equal(t, csiReq.Secrets, expectedCSIReq.Secrets)
+}
+
+type mockCSIMetadataDeltaResponse struct {
+	response *csi.GetMetadataDeltaResponse
+	err      error
+}
+
+func TestStreamGetMetadataDeltaResponse(t *testing.T) {
+	ctx := context.Background()
+	th := newTestHarness().WithMockCSIDriver(t).WithFakeClientAPIs()
+	defer th.TerminateMockCSIDriver()
+
+	grpcServer := th.StartGRPCServer(t, th.Runtime())
+	defer th.StopGRPCServer(t)
+
+	for _, tc := range []struct {
+		name                          string
+		req                           *api.GetMetadataDeltaRequest
+		expResponse                   *api.GetMetadataDeltaResponse
+		mockCSIMetadataDeltaResponses []mockCSIMetadataDeltaResponse
+		mockK8sStreamError            error
+		expectStreamError             bool
+		expectK8sStreamError          bool
+		expStatusCode                 codes.Code
+		expStatusMsg                  string
+	}{
+		{
+			name: "success",
+			req: &api.GetMetadataDeltaRequest{
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+				StartingOffset:     0,
+				MaxResults:         2,
+			},
+			mockCSIMetadataDeltaResponses: []mockCSIMetadataDeltaResponse{
+				{
+					response: &csi.GetMetadataDeltaResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 0,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+				{
+					response: &csi.GetMetadataDeltaResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 1,
+								SizeBytes:  1024,
+							},
+							{
+								ByteOffset: 2,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+			},
+			expResponse: &api.GetMetadataDeltaResponse{
+				BlockMetadataType:   api.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*api.BlockMetadata{
+					{
+						ByteOffset: 0,
+						SizeBytes:  1024,
+					},
+					{
+						ByteOffset: 1,
+						SizeBytes:  1024,
+					},
+					{
+						ByteOffset: 2,
+						SizeBytes:  1024,
+					},
+				},
+			},
+		},
+		// Starting offset non-zero
+		{
+			name: "success",
+			req: &api.GetMetadataDeltaRequest{
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+				StartingOffset:     25,
+				MaxResults:         1,
+			},
+			mockCSIMetadataDeltaResponses: []mockCSIMetadataDeltaResponse{
+				{
+					response: &csi.GetMetadataDeltaResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 25,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+				{
+
+					response: &csi.GetMetadataDeltaResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 26,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+			},
+			expResponse: &api.GetMetadataDeltaResponse{
+				BlockMetadataType:   api.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*api.BlockMetadata{
+					{
+						ByteOffset: 25,
+						SizeBytes:  1024,
+					},
+					{
+						ByteOffset: 26,
+						SizeBytes:  1024,
+					},
+				},
+			},
+		},
+
+		// CSI driver response error
+		{
+			name: "csi-stream-error",
+			req: &api.GetMetadataDeltaRequest{
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+				StartingOffset:     25,
+				MaxResults:         2,
+			},
+			mockCSIMetadataDeltaResponses: []mockCSIMetadataDeltaResponse{
+				{
+					response: &csi.GetMetadataDeltaResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 25,
+								SizeBytes:  1024,
+							},
+						},
+					},
+					err: nil,
+				},
+				{
+					response: nil,
+					err:      io.ErrUnexpectedEOF,
+				},
+			},
+			// expect incomplete response
+			expResponse: &api.GetMetadataDeltaResponse{
+				BlockMetadataType:   api.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*api.BlockMetadata{
+					{
+						ByteOffset: 25,
+						SizeBytes:  1024,
+					},
+				},
+			},
+			expectStreamError: true,
+			expStatusCode:     codes.Internal,
+			expStatusMsg:      msgInternalFailedCSIDriverResponse,
+		},
+
+		// K8s stream response error
+		{
+			name: "k8s-stream-error",
+			req: &api.GetMetadataDeltaRequest{
+				BaseSnapshotName:   "snap-1",
+				TargetSnapshotName: "snap-2",
+				StartingOffset:     0,
+				MaxResults:         2,
+			},
+			mockCSIMetadataDeltaResponses: []mockCSIMetadataDeltaResponse{
+				{
+					response: &csi.GetMetadataDeltaResponse{
+						BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+						VolumeCapacityBytes: 1024 * 1024 * 1024,
+						BlockMetadata: []*csi.BlockMetadata{
+							{
+								ByteOffset: 0,
+								SizeBytes:  1024,
+							},
+						},
+					},
+				},
+			},
+			mockK8sStreamError: errors.New("K8s stream send error"),
+			expectStreamError:  true,
+			expStatusCode:      codes.Internal,
+			expStatusMsg:       msgInternalFailedToSendResponse,
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			// mock CSI server streaming
+			mockController := gomock.NewController(t)
+			defer mockController.Finish()
+			csiClient := csiclientmocks.NewMockSnapshotMetadataClient(mockController)
+			mockCSIStream := csiclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient(mockController)
+
+			csiClient.EXPECT().GetMetadataDelta(gomock.Any(), gomock.Any()).Return(mockCSIStream, nil)
+			for _, r := range tc.mockCSIMetadataDeltaResponses {
+				mockCSIStream.EXPECT().Recv().Return(r.response, r.err)
+			}
+			// mock end of stream
+			if !tc.expectStreamError {
+				mockCSIStream.EXPECT().Recv().Return(nil, io.EOF)
+			}
+
+			csiReq, err := grpcServer.convertToCSIGetMetadataDeltaRequest(ctx, tc.req)
+			assert.NoError(t, err)
+
+			csiStream, err := csiClient.GetMetadataDelta(ctx, csiReq)
+			assert.NoError(t, err)
+
+			sms := &fakeStreamServerSnapshotDelta{err: tc.mockK8sStreamError}
+
+			errStream := grpcServer.streamGetMetadataDeltaResponse(sms, csiStream)
+			if tc.expectStreamError {
+				assert.NoError(t, err)
+				st, ok := status.FromError(errStream)
+				assert.True(t, ok)
+				assert.Equal(t, tc.expStatusCode, st.Code())
+				assert.ErrorContains(t, errStream, tc.expStatusMsg)
+				// Expect incomplete/partial response
+				assert.Equal(t, true, sms.verifyResponse(tc.expResponse))
+				return
+			}
+			assert.NoError(t, err)
+			assert.Equal(t, true, sms.verifyResponse(tc.expResponse))
+		})
+	}
+}
+
+type fakeStreamServerSnapshotDelta struct {
+	grpc.ServerStream
+	response *api.GetMetadataDeltaResponse
+	err      error
+}
+
+func (f *fakeStreamServerSnapshotDelta) Send(m *api.GetMetadataDeltaResponse) error {
+	if f.err != nil {
+		return f.err
+	}
+	if f.response == nil {
+		f.response = m
+		return nil
+	}
+	f.response.BlockMetadata = append(f.response.BlockMetadata, m.BlockMetadata...)
+	return nil
+}
+
+func (f *fakeStreamServerSnapshotDelta) verifyResponse(expectedResponse *api.GetMetadataDeltaResponse) bool {
+	return f.response.String() == expectedResponse.String()
 }
