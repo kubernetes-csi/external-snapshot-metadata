@@ -27,9 +27,17 @@ proto:
 crd:
 	@ cd client && ./hack/update-crd.sh
 
+.PHONY: lint
+# Run golangci-lint
+lint:
+	golangci-lint run
+
 
 # Include release-tools
 
 CMDS=csi-snapshot-metadata
 
 include release-tools/build.make
+
+# Extend the test target to include lint
+test: lint
