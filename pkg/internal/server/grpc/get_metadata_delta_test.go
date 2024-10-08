@@ -712,12 +712,15 @@ type mockCSIMetadataDeltaResponse struct {
 }
 
 func TestStreamGetMetadataDeltaResponse(t *testing.T) {
-	ctx := context.Background()
 	th := newTestHarness().WithMockCSIDriver(t).WithFakeClientAPIs()
 	defer th.TerminateMockCSIDriver()
 
 	grpcServer := th.StartGRPCServer(t, th.Runtime())
 	defer th.StopGRPCServer(t)
+
+	// Test at the trace logging level.
+	restoreFn := th.SetKlogVerbosity(HandlerDetailedTraceLogLevel, "Delta")
+	defer restoreFn()
 
 	for _, tc := range []struct {
 		name                          string
@@ -932,15 +935,16 @@ func TestStreamGetMetadataDeltaResponse(t *testing.T) {
 				mockCSIStream.EXPECT().Recv().Return(nil, io.EOF)
 			}
 
+			sms := &fakeStreamServerSnapshotDelta{err: tc.mockK8sStreamError}
+			ctx := grpcServer.getMetadataDeltaContextWithLogger(tc.req, sms)
+
 			csiReq, err := grpcServer.convertToCSIGetMetadataDeltaRequest(ctx, tc.req)
 			assert.NoError(t, err)
 
 			csiStream, err := csiClient.GetMetadataDelta(ctx, csiReq)
 			assert.NoError(t, err)
 
-			sms := &fakeStreamServerSnapshotDelta{err: tc.mockK8sStreamError}
-
-			errStream := grpcServer.streamGetMetadataDeltaResponse(sms, csiStream)
+			errStream := grpcServer.streamGetMetadataDeltaResponse(ctx, sms, csiStream)
 			if tc.expectStreamError {
 				assert.NoError(t, err)
 				st, ok := status.FromError(errStream)
@@ -961,6 +965,10 @@ type fakeStreamServerSnapshotDelta struct {
 	grpc.ServerStream
 	response *api.GetMetadataDeltaResponse
 	err      error
+}
+
+func (f *fakeStreamServerSnapshotDelta) Context() context.Context {
+	return context.Background()
 }
 
 func (f *fakeStreamServerSnapshotDelta) Send(m *api.GetMetadataDeltaResponse) error {

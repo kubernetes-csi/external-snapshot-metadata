@@ -39,5 +39,6 @@ CMDS=csi-snapshot-metadata
 
 include release-tools/build.make
 
-# Extend the test target to include lint
-test: lint
+# Eventually extend the test target to include lint.
+# Currently the linter is not available in the CI infrastructure.
+#test: lint

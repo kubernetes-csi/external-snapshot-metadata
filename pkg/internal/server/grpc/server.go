@@ -38,7 +38,8 @@ import (
 )
 
 const (
-	HandlerTraceLogLevel = 4
+	HandlerTraceLogLevel         = 4
+	HandlerDetailedTraceLogLevel = 5
 )
 
 type ServerConfig struct {

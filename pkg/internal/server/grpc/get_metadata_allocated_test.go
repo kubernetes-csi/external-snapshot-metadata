@@ -482,12 +482,15 @@ type mockCSIMetadataAllocatedResponse struct {
 }
 
 func TestStreamGetMetadataAllocatedResponse(t *testing.T) {
-	ctx := context.Background()
 	th := newTestHarness().WithMockCSIDriver(t).WithFakeClientAPIs()
 	defer th.TerminateMockCSIDriver()
 
 	grpcServer := th.StartGRPCServer(t, th.Runtime())
 	defer th.StopGRPCServer(t)
+
+	// Test at the trace logging level.
+	restoreFn := th.SetKlogVerbosity(HandlerDetailedTraceLogLevel, "Alloc")
+	defer restoreFn()
 
 	for _, tc := range []struct {
 		name                              string
@@ -698,15 +701,16 @@ func TestStreamGetMetadataAllocatedResponse(t *testing.T) {
 				mockCSIStream.EXPECT().Recv().Return(nil, io.EOF)
 			}
 
+			sms := &fakeStreamServerSnapshotAllocated{err: tc.mockK8sStreamError}
+			ctx := grpcServer.getMetadataAllocatedContextWithLogger(tc.req, sms)
+
 			csiReq, err := grpcServer.convertToCSIGetMetadataAllocatedRequest(ctx, tc.req)
 			assert.NoError(t, err)
 
 			csiStream, err := csiClient.GetMetadataAllocated(ctx, csiReq)
 			assert.NoError(t, err)
 
-			sms := &fakeStreamServerSnapshotAllocated{err: tc.mockK8sStreamError}
-
-			errStream := grpcServer.streamGetMetadataAllocatedResponse(sms, csiStream)
+			errStream := grpcServer.streamGetMetadataAllocatedResponse(ctx, sms, csiStream)
 			if tc.expectStreamError {
 				assert.NoError(t, err)
 				st, ok := status.FromError(errStream)
@@ -727,6 +731,10 @@ type fakeStreamServerSnapshotAllocated struct {
 	grpc.ServerStream
 	response *api.GetMetadataAllocatedResponse
 	err      error
+}
+
+func (f *fakeStreamServerSnapshotAllocated) Context() context.Context {
+	return context.Background()
 }
 
 func (f *fakeStreamServerSnapshotAllocated) Send(m *api.GetMetadataAllocatedResponse) error {
