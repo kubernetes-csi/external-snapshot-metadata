@@ -31,7 +31,7 @@ const (
 	msgInternalFailedToFindCR             = "failed to find the SnapshotMetadataService CR for driver"
 	msgInternalFailedToFindCRFmt          = msgInternalFailedToFindCR + " '%s': %v"
 	msgInternalFailedToSendResponse       = "failed to send response"
-	msgInternalFailedtoSendResponseFmt    = msgInternalFailedToSendResponse + ": %v"
+	msgInternalFailedToSendResponseFmt    = msgInternalFailedToSendResponse + ": %v"
 
 	msgInvalidArgumentBaseSnapshotNameMissing   = "baseSnapshotName cannot be empty"
 	msgInvalidArgumentNamespaceMissing          = "namespace parameter cannot be empty"
