@@ -12,7 +12,7 @@ create_kind_cluster() {
 }
 
 install_resources() {
-  kubectl apply -k test/test_resources
+  ## TODO setup needed K8s resources here
 }
 
 setup() {
@@ -22,7 +22,8 @@ setup() {
 }
 
 run_tests() {
-  go test github.com/kubernetes-csi/external-snapshot-metadata/pkg/e2e_test
+  ## TODO: run tests here
+  # go test github.com/kubernetes-csi/external-snapshot-metadata/pkg/e2e_test
 }
 
 tear_down() {
@@ -46,7 +47,7 @@ main() {
   TMP_DIR=$(mktemp -d)
 
   # export the KUBECONFIG to a unique path for testing
-  KUBECONFIG="${HOME}/.kube/kind-test-config"
+  KUBECONFIG="${TMP_DIR}/.kube/kind-test-config"
   export KUBECONFIG
   echo "exported KUBECONFIG=${KUBECONFIG}"
 

@@ -32,6 +32,9 @@ crd:
 lint:
 	golangci-lint run
 
+.PHONY: test-e2e
+test-e2e:
+	./test/run_e2e_test.sh
 
 # Include release-tools
 
