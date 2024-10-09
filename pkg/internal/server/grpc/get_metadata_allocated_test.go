@@ -342,7 +342,7 @@ func TestConvertToCSIGetMetadataAllocatedRequest(t *testing.T) {
 			expStatusMsgPat: fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotStatusFmt, "snap-with-no-vsc"),
 		},
 		{
-			// VolumeSnapshotContent resource asssociated with snapshot doesn't exist
+			// VolumeSnapshotContent resource associated with snapshot doesn't exist
 			name: "snapshot-content-get-error",
 			apiRequest: &api.GetMetadataAllocatedRequest{
 				SnapshotName:   "snap-content-doesnt-exist",

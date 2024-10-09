@@ -446,7 +446,7 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 			expStatusMsgPat: fmt.Sprintf(msgUnavailableInvalidVolumeSnapshotStatusFmt, "snap-with-no-vsc"),
 		},
 		{
-			// VolumeSnapshotContent resource asssociated with base snapshot doesn't exist
+			// VolumeSnapshotContent resource associated with base snapshot doesn't exist
 			name: "base-snapshot-content-get-error",
 			apiRequest: &api.GetMetadataDeltaRequest{
 				BaseSnapshotName:   "snap-content-doesnt-exist",
@@ -469,7 +469,7 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotContentFmt, th.ContentNameFromSnapshot("snap-content-doesnt-exist"), "does not exist"),
 		},
 		{
-			// VolumeSnapshotContent resource asssociated with target snapshot doesn't exist
+			// VolumeSnapshotContent resource associated with target snapshot doesn't exist
 			name: "target-snapshot-content-get-error",
 			apiRequest: &api.GetMetadataDeltaRequest{
 				BaseSnapshotName:   "snap-1",
