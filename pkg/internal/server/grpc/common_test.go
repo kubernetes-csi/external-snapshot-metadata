@@ -18,7 +18,9 @@ package grpc
 
 import (
 	"context"
+	"flag"
 	"net"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -37,6 +39,7 @@ import (
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
+	"k8s.io/klog/v2"
 
 	smsv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
 	fakecbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/fake"
@@ -406,4 +409,28 @@ func convStringByteMapToStringStringMap(inMap map[string][]byte) map[string]stri
 		ret[k] = string(v)
 	}
 	return ret
+}
+
+type KlogRestoreVerbosityFunc func()
+
+// SetKlogVerbosity sets up the default logger with the specified verbosity level.
+func (th *testHarness) SetKlogVerbosity(verboseLevel int, uniquePrefix string) KlogRestoreVerbosityFunc {
+	klog.ClearLogger()
+	// Set the verbosity level using a new flag set.
+	// It is not possible to set a verbose klog/v2/testlogger as the background logger
+	// because the klog.V() performs its own checks.
+	var level klog.Level
+	level.Set(strconv.Itoa(verboseLevel))
+	fs := flag.NewFlagSet(uniquePrefix+"Fs1", flag.ContinueOnError)
+	fs.Var(&level, uniquePrefix+"V1", "test log verbosity level")
+	klog.InitFlags(fs)
+
+	return func() {
+		// restore the verbosity level using a new flag set
+		klog.ClearLogger()
+		fs := flag.NewFlagSet(uniquePrefix+"Fs2", flag.ExitOnError)
+		level.Set("1")
+		fs.Var(&level, uniquePrefix+"V2", "test log verbosity level")
+		klog.InitFlags(fs)
+	}
 }
