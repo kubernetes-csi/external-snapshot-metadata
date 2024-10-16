@@ -18,7 +18,9 @@ package grpc
 
 import (
 	"context"
+	"fmt"
 	"io"
+	"strings"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -114,22 +116,76 @@ func (s *Server) convertToCSIGetMetadataAllocatedRequest(ctx context.Context, re
 }
 
 func (s *Server) streamGetMetadataAllocatedResponse(ctx context.Context, clientStream api.SnapshotMetadata_GetMetadataAllocatedServer, csiStream csi.SnapshotMetadata_GetMetadataAllocatedClient) error {
+	var (
+		blockMetadataType   api.BlockMetadataType
+		lastByteOffset      int64
+		lastSize            int64
+		logger              = klog.FromContext(ctx)
+		numBlockMetadata    int
+		responseNum         int
+		volumeCapacityBytes int64
+	)
+
 	for {
 		csiResp, err := csiStream.Recv()
 		if err == io.EOF {
-			klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("stream EOF")
+			logger.V(HandlerTraceLogLevel).WithValues(
+				"blockMetadataType", blockMetadataType.String(),
+				"lastByteOffset", lastByteOffset,
+				"lastSize", lastSize,
+				"lastResponseNum", responseNum,
+				"volumeCapacityBytes", volumeCapacityBytes,
+			).Info("stream EOF")
 			return nil
 		}
 
-		//TODO: stream logging with progress
-
 		if err != nil {
+			logger.WithValues(
+				"blockMetadataType", blockMetadataType.String(),
+				"lastByteOffset", lastByteOffset,
+				"lastSize", lastSize,
+				"lastResponseNum", responseNum,
+				"volumeCapacityBytes", volumeCapacityBytes,
+			).Error(err, msgInternalFailedCSIDriverResponse)
 			return s.statusPassOrWrapError(err, codes.Internal, msgInternalFailedCSIDriverResponseFmt, err)
 		}
 
+		responseNum++
+
 		clientResp := s.convertToGetMetadataAllocatedResponse(csiResp)
+		blockMetadataType = clientResp.BlockMetadataType
+		volumeCapacityBytes = clientResp.VolumeCapacityBytes
+		numBlockMetadata = len(clientResp.BlockMetadata) - 1
+		if numBlockMetadata >= 0 {
+			lastByteOffset = clientResp.BlockMetadata[numBlockMetadata].ByteOffset
+			lastSize = clientResp.BlockMetadata[numBlockMetadata].SizeBytes
+		}
+
+		if logger.V(HandlerDetailedTraceLogLevel).Enabled() {
+			var b strings.Builder
+			b.WriteString("[")
+			for _, bmd := range clientResp.BlockMetadata {
+				b.WriteString(fmt.Sprintf("{%d,%d}", bmd.ByteOffset, bmd.SizeBytes))
+			}
+			b.WriteString("]")
+			logger.WithValues(
+				"blockMetadataType", blockMetadataType.String(),
+				"responseNum", responseNum,
+				"volumeCapacityBytes", volumeCapacityBytes,
+				"blockMetadata", b.String(),
+				"numBlockMetadata", len(clientResp.BlockMetadata),
+			).Info("stream response")
+		}
+
 		if err := clientStream.Send(clientResp); err != nil {
-			return s.statusPassOrWrapError(err, codes.Internal, msgInternalFailedtoSendResponseFmt, err)
+			logger.WithValues(
+				"blockMetadataType", blockMetadataType.String(),
+				"lastByteOffset", lastByteOffset,
+				"lastSize", lastSize,
+				"responseNum", responseNum,
+				"volumeCapacityBytes", volumeCapacityBytes,
+			).Error(err, msgInternalFailedToSendResponse)
+			return s.statusPassOrWrapError(err, codes.Internal, msgInternalFailedToSendResponseFmt, err)
 		}
 	}
 }
