@@ -20,7 +20,7 @@ import (
 	"context"
 
 	authv1 "k8s.io/api/authentication/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/klog/v2"
 )
@@ -44,7 +44,7 @@ func (t *TokenAuthenticator) Authenticate(ctx context.Context, token string, aud
 			Audiences: []string{audience},
 		},
 	}
-	auth, err := t.kubeClient.AuthenticationV1().TokenReviews().Create(ctx, &tokenReview, metav1.CreateOptions{})
+	auth, err := t.kubeClient.AuthenticationV1().TokenReviews().Create(ctx, &tokenReview, apimetav1.CreateOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, "TokenReviews.Create", "audiences", audience)
 		return false, nil, err

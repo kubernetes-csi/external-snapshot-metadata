@@ -51,10 +51,38 @@ linters-settings:
   funlen:
     lines: 240
     statements: 160
+  gci:
+    sections:
+      - standard
+      - default
+      - prefix(github.com/kubernetes-csi/external-snapshot-metadata)
   gocognit:
     min-complexity: 20
   gocyclo:
     min-complexity: 20
+  importas:
+    no-unaliased: true
+    alias:
+      - pkg: github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1
+        alias: snapshotv1
+      - pkg: github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake
+        alias: fakesnapshot
+      - pkg: github.com/kubernetes-csi/external-snapshotter/v8/pkg/utils
+        alias: snapshotutils
+      - pkg: google.golang.org/grpc/health/grpc_health_v1
+        alias: healthpb
+      - pkg: k8s.io/api/authentication/v1
+        alias: authv1
+      - pkg: k8s.io/api/authorization/v1
+        alias: authzv1
+      - pkg: k8s.io/api/core/v1
+        alias: corev1
+      - pkg: k8s.io/apimachinery/pkg/apis/meta/v1
+        alias: apimetav1
+      - pkg: k8s.io/apimachinery/pkg/runtime
+        alias: apiruntime
+      - pkg: k8s.io/client-go/testing
+        alias: clientgotesting
   lll:
     line-length: 240
   nakedret:

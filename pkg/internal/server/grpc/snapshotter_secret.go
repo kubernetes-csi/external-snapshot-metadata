@@ -24,7 +24,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	corev1 "k8s.io/api/core/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -80,7 +80,7 @@ func (s *Server) getSnapshotterSecretRef(ctx context.Context, vsi *volSnapshotIn
 }
 
 func (s *Server) getVolumeSnapshotClass(ctx context.Context, volumeSnapshotClassName string) (*snapshotv1.VolumeSnapshotClass, error) {
-	vsc, err := s.snapshotClient().SnapshotV1().VolumeSnapshotClasses().Get(ctx, volumeSnapshotClassName, metav1.GetOptions{})
+	vsc, err := s.snapshotClient().SnapshotV1().VolumeSnapshotClasses().Get(ctx, volumeSnapshotClassName, apimetav1.GetOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, msgUnavailableFailedToGetVolumeSnapshotClass, "volumeSnapshotClassName", volumeSnapshotClassName)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotClassFmt, volumeSnapshotClassName, err)
@@ -90,7 +90,7 @@ func (s *Server) getVolumeSnapshotClass(ctx context.Context, volumeSnapshotClass
 }
 
 func (s *Server) getDefaultVolumeSnapshotClassForDriver(ctx context.Context, driverName string) (*snapshotv1.VolumeSnapshotClass, error) {
-	vscList, err := s.snapshotClient().SnapshotV1().VolumeSnapshotClasses().List(ctx, metav1.ListOptions{})
+	vscList, err := s.snapshotClient().SnapshotV1().VolumeSnapshotClasses().List(ctx, apimetav1.ListOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, msgUnavailableFailedToListVolumeSnapshotClasses)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToListVolumeSnapshotClassesFmt, err)

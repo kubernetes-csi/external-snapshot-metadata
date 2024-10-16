@@ -23,7 +23,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	authv1 "k8s.io/api/authentication/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
 )
@@ -40,7 +40,7 @@ func TestAuthorization(t *testing.T) {
 		// authenticated token, valid audience
 		{
 			audience: "xxxxxaaaa",
-			reactor: func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				tokenReview := &authv1.TokenReview{
 					Status: authv1.TokenReviewStatus{
 						Authenticated: true,
@@ -55,7 +55,7 @@ func TestAuthorization(t *testing.T) {
 		// authenticated token, invalid audience
 		{
 			audience: "xxxxxinvalid",
-			reactor: func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				tokenReview := &authv1.TokenReview{
 					Status: authv1.TokenReviewStatus{
 						Authenticated: true,
@@ -71,7 +71,7 @@ func TestAuthorization(t *testing.T) {
 		{
 			token:    "yyyyyyaaaa",
 			audience: "xxxxxinvalid",
-			reactor: func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				tokenReview := &authv1.TokenReview{
 					Status: authv1.TokenReviewStatus{
 						Authenticated: false,
@@ -86,7 +86,7 @@ func TestAuthorization(t *testing.T) {
 		{
 			token:    "yyyyyyaaaa",
 			audience: "xxxxxinvalid",
-			reactor: func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				return true, nil, errors.New("failed to create TokenReview")
 			},
 			expectedResult: false,

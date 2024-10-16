@@ -22,7 +22,7 @@ import (
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/klog/v2"
 )
 
@@ -61,7 +61,7 @@ func (s *Server) getVolSnapshotInfo(ctx context.Context, namespace, vsName strin
 }
 
 func (s *Server) getVolumeSnapshot(ctx context.Context, namespace, vsName string) (*snapshotv1.VolumeSnapshot, error) {
-	vs, err := s.snapshotClient().SnapshotV1().VolumeSnapshots(namespace).Get(ctx, vsName, metav1.GetOptions{})
+	vs, err := s.snapshotClient().SnapshotV1().VolumeSnapshots(namespace).Get(ctx, vsName, apimetav1.GetOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, msgUnavailableFailedToGetVolumeSnapshot, "vsName", vsName)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotFmt, namespace, vsName, err)
@@ -81,7 +81,7 @@ func (s *Server) getVolumeSnapshot(ctx context.Context, namespace, vsName string
 }
 
 func (s *Server) getVolumeSnapshotContent(ctx context.Context, vscName, vsName string) (*snapshotv1.VolumeSnapshotContent, error) {
-	vsc, err := s.snapshotClient().SnapshotV1().VolumeSnapshotContents().Get(ctx, vscName, metav1.GetOptions{})
+	vsc, err := s.snapshotClient().SnapshotV1().VolumeSnapshotContents().Get(ctx, vscName, apimetav1.GetOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, msgUnavailableFailedToGetVolumeSnapshotContent, "vscName", vscName, "vsName", vsName)
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotContentFmt, vscName, err)

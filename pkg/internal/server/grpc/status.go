@@ -82,7 +82,7 @@ const (
 
 // statusPassOrWrapError accepts an error and and returns it unchanged if it is nil or a gRPC Status with a code other than Unknown.
 // Otherwise it formats it as a gRPC Status with the given code, format string and arguments.
-func (s *Server) statusPassOrWrapError(err error, c codes.Code, format string, args ...any) error {
+func (s *Server) statusPassOrWrapError(err error, c codes.Code, format string, args ...any) error { //nolint:unparam
 	if err == nil {
 		return nil
 	}

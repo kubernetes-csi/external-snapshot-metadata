@@ -25,7 +25,7 @@ import (
 	"syscall"
 	"time"
 
-	klog "k8s.io/klog/v2"
+	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/server/grpc"
@@ -140,7 +140,8 @@ func newSidecarFlagSet(name, version string) *sidecarFlagSet {
 	s.kubeAPIQPS = s.Float64(flagKubeAPIQPS, defaultKubeAPIQPS, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	s.kubeAPIBurst = s.Int(flagKubeAPIBurst, defaultKubeAPIBurst, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
 
-	s.httpEndpoint = s.String(flagHTTPEndpoint, defaultHTTPEndpoint, "The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled.")
+	s.httpEndpoint = s.String(flagHTTPEndpoint, defaultHTTPEndpoint,
+		"The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled.")
 	s.metricsPath = s.String(flagMetricsPath, defaultMetricsPath, "The HTTP path where prometheus metrics will be exposed. Defaults to "+defaultMetricsPath+".")
 
 	// K8s logging initialization

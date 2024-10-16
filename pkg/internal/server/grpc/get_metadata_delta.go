@@ -136,7 +136,7 @@ func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *a
 	}, nil
 }
 
-func (s *Server) streamGetMetadataDeltaResponse(ctx context.Context, clientStream api.SnapshotMetadata_GetMetadataDeltaServer, csiStream csi.SnapshotMetadata_GetMetadataDeltaClient) error {
+func (s *Server) streamGetMetadataDeltaResponse(ctx context.Context, clientStream api.SnapshotMetadata_GetMetadataDeltaServer, csiStream csi.SnapshotMetadata_GetMetadataDeltaClient) error { //nolint:dupl
 	var (
 		blockMetadataType   api.BlockMetadataType
 		lastByteOffset      int64

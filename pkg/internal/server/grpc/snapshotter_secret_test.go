@@ -24,7 +24,6 @@ import (
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	snapshotutils "github.com/kubernetes-csi/external-snapshotter/v8/pkg/utils"
 	"github.com/stretchr/testify/assert"
-	"k8s.io/apimachinery/pkg/runtime"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	clientgotesting "k8s.io/client-go/testing"
 )
@@ -81,7 +80,7 @@ func TestGetDefaultVolumeSnapshotClassForDriver(t *testing.T) {
 	t.Run("list-error", func(t *testing.T) {
 		defer th.FakePopPrependedReactors()
 
-		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 			return true, nil, errors.New("fake-error")
 		})
 		s := th.ServerWithRuntime(t, th.Runtime())
@@ -105,7 +104,7 @@ func TestGetDefaultVolumeSnapshotClassForDriver(t *testing.T) {
 	t.Run("no-default", func(t *testing.T) {
 		defer th.FakePopPrependedReactors()
 
-		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 			vscList := &snapshotv1.VolumeSnapshotClassList{
 				Items: []snapshotv1.VolumeSnapshotClass{
 					*th.VSCIsDefaultFalse(),
@@ -127,7 +126,7 @@ func TestGetDefaultVolumeSnapshotClassForDriver(t *testing.T) {
 
 		dupDefault := th.VSCIsDefaultTrue().DeepCopy()
 		dupDefault.Name = "dup-of-" + dupDefault.Name
-		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 			vscList := &snapshotv1.VolumeSnapshotClassList{
 				Items: []snapshotv1.VolumeSnapshotClass{
 					*th.VSCIsDefaultFalse(),
@@ -149,7 +148,7 @@ func TestGetDefaultVolumeSnapshotClassForDriver(t *testing.T) {
 		defer th.FakePopPrependedReactors()
 
 		defaultVSC := th.VSCIsDefaultTrue()
-		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+		th.FakeSnapshotClient.PrependReactor("list", "volumesnapshotclasses", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 			vscList := &snapshotv1.VolumeSnapshotClassList{
 				Items: []snapshotv1.VolumeSnapshotClass{
 					*th.VSCIsDefaultFalse(),

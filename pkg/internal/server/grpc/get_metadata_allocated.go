@@ -115,7 +115,7 @@ func (s *Server) convertToCSIGetMetadataAllocatedRequest(ctx context.Context, re
 	}, nil
 }
 
-func (s *Server) streamGetMetadataAllocatedResponse(ctx context.Context, clientStream api.SnapshotMetadata_GetMetadataAllocatedServer, csiStream csi.SnapshotMetadata_GetMetadataAllocatedClient) error {
+func (s *Server) streamGetMetadataAllocatedResponse(ctx context.Context, clientStream api.SnapshotMetadata_GetMetadataAllocatedServer, csiStream csi.SnapshotMetadata_GetMetadataAllocatedClient) error { //nolint:dupl
 	var (
 		blockMetadataType   api.BlockMetadataType
 		lastByteOffset      int64
