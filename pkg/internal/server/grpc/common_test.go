@@ -33,7 +33,7 @@ import (
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/test/bufconn"
 	authv1 "k8s.io/api/authentication/v1"
-	v1 "k8s.io/api/authorization/v1"
+	authzv1 "k8s.io/api/authorization/v1"
 	corev1 "k8s.io/api/core/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
@@ -177,7 +177,7 @@ func (th *testHarness) makeFakeKubeClient() *fake.Clientset {
 	})
 	fakeKubeClient.PrependReactor("create", "subjectaccessreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 		ca := action.(clientgotesting.CreateAction)
-		sar := ca.GetObject().(*v1.SubjectAccessReview)
+		sar := ca.GetObject().(*authzv1.SubjectAccessReview)
 		if sar.Spec.ResourceAttributes != nil && sar.Spec.ResourceAttributes.Namespace == th.Namespace {
 			sar.Status.Allowed = true
 		} else {
@@ -230,7 +230,6 @@ func (th *testHarness) makeFakeCBTClient() *fakecbt.Clientset {
 		return true, sms, nil
 	})
 	return fakeCBTClient
-
 }
 
 func (th *testHarness) makeFakeSnapshotClient() *fakesnapshot.Clientset {

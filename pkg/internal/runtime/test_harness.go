@@ -373,7 +373,6 @@ func (tcg *testTLSCertGenerator) Cleanup() {
 		os.Remove(tcg.keyFile)
 		tcg.keyFile = ""
 	}
-
 }
 
 // The following is copied from crypto/tls/tls_test.go

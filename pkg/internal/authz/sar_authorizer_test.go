@@ -23,8 +23,8 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	authv1 "k8s.io/api/authentication/v1"
-	"k8s.io/api/authorization/v1"
-	"k8s.io/apimachinery/pkg/runtime"
+	authzv1 "k8s.io/api/authorization/v1"
+	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
@@ -44,9 +44,9 @@ func TestAuthenticate(t *testing.T) {
 	}{
 		// authorized user
 		{
-			reactor: func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-				response := &v1.SubjectAccessReview{
-					Status: v1.SubjectAccessReviewStatus{
+			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				response := &authzv1.SubjectAccessReview{
+					Status: authzv1.SubjectAccessReviewStatus{
 						Allowed: true,
 						Reason:  "mock reason",
 					},
@@ -59,9 +59,9 @@ func TestAuthenticate(t *testing.T) {
 		},
 		// unauthorized user
 		{
-			reactor: func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
-				response := &v1.SubjectAccessReview{
-					Status: v1.SubjectAccessReviewStatus{
+			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				response := &authzv1.SubjectAccessReview{
+					Status: authzv1.SubjectAccessReviewStatus{
 						Allowed: false,
 						Reason:  "mock reason",
 					},
@@ -74,7 +74,7 @@ func TestAuthenticate(t *testing.T) {
 		},
 		// error in authorization
 		{
-			reactor: func(action clientgotesting.Action) (handled bool, ret runtime.Object, err error) {
+			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				return true, nil, errors.New("failed to create SubjectAccessReview")
 			},
 			expectedDecision: authorizer.DecisionDeny,

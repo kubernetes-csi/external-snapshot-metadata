@@ -30,7 +30,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"k8s.io/client-go/kubernetes"
-	klog "k8s.io/klog/v2"
+	"k8s.io/klog/v2"
 
 	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"

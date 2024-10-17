@@ -29,7 +29,6 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
-	"k8s.io/apimachinery/pkg/runtime"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	clientgotesting "k8s.io/client-go/testing"
 
@@ -261,9 +260,9 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 		name                      string
 		apiRequest                *api.GetMetadataDeltaRequest
 		expectedCSIRequest        *csi.GetMetadataDeltaRequest
-		fakeSecret                func(clientgotesting.Action) (bool, runtime.Object, error)
-		fakeVolumeSnapshot        func(clientgotesting.Action) (bool, runtime.Object, error)
-		fakeVolumeSnapshotContent func(clientgotesting.Action) (bool, runtime.Object, error)
+		fakeSecret                func(clientgotesting.Action) (bool, apiruntime.Object, error)
+		fakeVolumeSnapshot        func(clientgotesting.Action) (bool, apiruntime.Object, error)
+		fakeVolumeSnapshotContent func(clientgotesting.Action) (bool, apiruntime.Object, error)
 		expectError               bool
 		expStatusCode             codes.Code
 		expStatusMsgPat           string
@@ -648,7 +647,7 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 			},
 			expectError:     true,
 			expStatusCode:   codes.InvalidArgument,
-			expStatusMsgPat: fmt.Sprintf(msgInvalidArgumentDiffSnapshotSourceVolumes),
+			expStatusMsgPat: msgInvalidArgumentDiffSnapshotSourceVolumes,
 		},
 		{
 			name: "error-fetching-secrets",

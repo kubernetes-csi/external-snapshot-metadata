@@ -23,7 +23,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 	authv1 "k8s.io/api/authentication/v1"
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	kauthorizer "k8s.io/apiserver/pkg/authorization/authorizer"
 	"k8s.io/klog/v2"
 
@@ -69,7 +69,7 @@ func (s *Server) authenticateRequest(ctx context.Context, securityToken string) 
 }
 
 func (s *Server) getAudienceForDriver(ctx context.Context) (string, error) {
-	sms, err := s.cbtClient().CbtV1alpha1().SnapshotMetadataServices().Get(ctx, s.driverName(), metav1.GetOptions{})
+	sms, err := s.cbtClient().CbtV1alpha1().SnapshotMetadataServices().Get(ctx, s.driverName(), apimetav1.GetOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, msgInternalFailedToFindCR, "driver", s.driverName())
 		return "", fmt.Errorf(msgInternalFailedToFindCRFmt, s.driverName(), err)

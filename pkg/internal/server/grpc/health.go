@@ -23,7 +23,7 @@ import (
 	"google.golang.org/grpc/health"
 	healthpb "google.golang.org/grpc/health/grpc_health_v1"
 	"google.golang.org/grpc/status"
-	klog "k8s.io/klog/v2"
+	"k8s.io/klog/v2"
 )
 
 func newHealthServer() *health.Server {
