@@ -1,0 +1,39 @@
+---
+name: Intergration test
+
+on:
+  pull_request
+
+jobs:
+  minikube-ci:
+    name: Intergration test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Start minikube
+        uses: medyagh/setup-minikube@latest
+
+      - name: Set up Golang
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Build container image
+        run: |
+          make build-csi-snapshot-metadata
+          minikube image build -f ./cmd/csi-snapshot-metadata/Dockerfile -t gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:test .
+ 
+      - name: Deploy resources
+        run: echo "deploying resources" # This is a placeholder for the actual deployment
+
+      - name: Wait for running driver pod
+        run: echo "waiting for driver pod to be running" # This is a placeholder for the kubectl wait command 
+
+      - name: Run integration tests
+        run: echo "running integration tests" # This is a placeholder for the actual integration tests    
+
+      - name: Log the status of the failed driver pod
+        if: ${{ failure() }}
+        run: echo "The driver pod is not running" # This is a placeholder for the kubectl describe/logs command
