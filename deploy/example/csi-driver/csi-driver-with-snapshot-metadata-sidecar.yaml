@@ -1,71 +1,75 @@
+# This YAML file shows how to deploy the external-snapshot-metadata together
+# with the hostpath CSI driver.
+
+---
+kind: StatefulSet
 apiVersion: apps/v1
-kind: Deployment
 metadata:
-  name: csi-dummyplugin
+  name: csi-snapshot-metadata
   namespace: csi-driver
 spec:
+  serviceName: "csi-snapshot-metadata"
+  replicas: 1
   selector:
     matchLabels:
-      app.kubernetes.io/name: csi-dummyplugin
-  replicas: 1
+      app.kubernetes.io/name: csi-snapshot-metadata
   template:
     metadata:
       labels:
-        app.kubernetes.io/name: csi-dummyplugin
+        app.kubernetes.io/name: csi-snapshot-metadata
     spec:
-      serviceAccountName: csi-dummyplugin
+      serviceAccountName: csi-snapshot-metadata
       containers:
-      # TODO: replace with hostpath driver plugin once SNAPSHOT_METADATA service is available
-      # Currently, it points to the Mock implementation of CSI driver https://github.com/PrasadG193/sample-csi-cbt-service
-      - name: csi-dummyplugin
-        image: prasadg193/sample-csi-cbt-service:latest
-        args:
-        - "--endpoint=unix://csi/csi.sock"
-        env:
-        - name: "DRIVER_NAME"
-          value: "dummy.csi.k8s.io"
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - mountPath: /csi
-          name: socket-dir
-      - name: csi-snapshot-metadata
-        # TODO: Replace with build image once CI process is set
-        image: prasadg193/csi-snapshot-metadata:latest
-        command:
-        args:
-        - "-csi-address=unix:///csi/csi.sock"
-        - "-tls-cert=/tmp/certificates/tls.crt"
-        - "-tls-key=/tmp/certificates/tls.key"
-        readinessProbe:
-          exec:
-            command:
-            - "/bin/grpc_health_probe"
-            - "-addr=:50051"
-            - "-tls"
-            - "-tls-no-verify"
-          initialDelaySeconds: 5
-        livenessProbe:
-          exec:
-            command:
-            - "/bin/grpc_health_probe"
-            - "-addr=:50051"
-            - "-tls"
-            - "-tls-no-verify"
-          initialDelaySeconds: 10
-        securityContext:
-          privileged: true
-        volumeMounts:
-        - name: server-certs
-          mountPath: /tmp/certificates
-          readOnly: true
-        - mountPath: /csi
-          name: socket-dir
+        - name: csi-snapshot-metadata
+          # TODO: Replace main tag with actual released tag once external-snapshot-metadata is released
+          image: gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:main
+          imagePullPolicy: "Always"
+          command:
+          args:
+          - "--csi-address=/csi/csi.sock"
+          - "--tls-cert=/tmp/certificates/tls.crt"
+          - "--tls-key=/tmp/certificates/tls.key"
+          readinessProbe:
+            exec:
+              command:
+              - "/bin/grpc_health_probe"
+              - "-addr=:50051"
+              - "-tls"
+              - "-tls-no-verify"
+            initialDelaySeconds: 5
+          volumeMounts:
+            - mountPath: /csi
+              name: socket-dir
+            - name: csi-snapshot-metadata-server-certs
+              mountPath: /tmp/certificates
+              readOnly: true
+        - name: hostpath
+          # TODO: Replace with correct repo and tag once support for
+          # SnapshotMetadata service is added
+          image: prasadg193/hostpathplugin:amd64-linux-canary
+          #image: registry.k8s.io/sig-storage/hostpathplugin:v1.11.0
+          args:
+            - "--v=5"
+            - "--endpoint=$(CSI_ENDPOINT)"
+            - "--nodeid=$(NODE_NAME)"
+            - "--enable-snapshot-metadata"
+          env:
+            - name: CSI_ENDPOINT
+              value: unix:///csi/csi.sock
+            - name: NODE_NAME
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: spec.nodeName
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            privileged: true
+          volumeMounts:
+            - name: socket-dir
+              mountPath: /csi
       volumes:
-      - name: server-certs
-        secret:
-          secretName: csi-dummyplugin-certs
-      - hostPath:
-          path: /var/lib/kubelet/plugins/cbt/csi-hostpath
-          type: DirectoryOrCreate
-        name: socket-dir
+        - name: socket-dir
+          emptyDir: {}
+        - name: csi-snapshot-metadata-server-certs
+          secret:
+            secretName: csi-snapshot-metadata-certs

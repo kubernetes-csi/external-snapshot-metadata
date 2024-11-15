@@ -1,15 +1,15 @@
 apiVersion: v1
 kind: Service
 metadata:
-  name: csi-dummyplugin
+  name: csi-snapshot-metadata
   namespace: csi-driver
   labels:
-    app.kubernetes.io/name: csi-dummyplugin
+    app.kubernetes.io/name: csi-snapshot-metadata
 spec:
   ports:
-  - name: cbt
+  - name: snapshot-metadata
     port: 6443
     protocol: TCP
     targetPort: 50051
   selector:
-    app.kubernetes.io/name: csi-dummyplugin
+    app.kubernetes.io/name: csi-snapshot-metadata
