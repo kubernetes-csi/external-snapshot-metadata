@@ -1,7 +1,7 @@
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRole
 metadata:
-  name: csi-snapshot-metadata-cluster-role
+  name: external-snapshot-metadata-runner
 rules:
 # To access snapshotmetadataservice resource
 - apiGroups:
