@@ -32,8 +32,8 @@ import (
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
-	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	"github.com/kubernetes-csi/csi-test/v5/driver"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/metrics"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -126,8 +126,9 @@ func (th *TestHarness) RuntimeArgs() Args {
 func (th *TestHarness) RuntimeForMockCSIDriver(t *testing.T) *Runtime {
 	assert.NotNil(t, th.MockCSIDriverConn, "needs WithMockCSIDriver")
 	rt := &Runtime{
-		Args:    th.RuntimeArgs(),
-		CSIConn: th.MockCSIDriverConn,
+		Args:           th.RuntimeArgs(),
+		CSIConn:        th.MockCSIDriverConn,
+		MetricsManager: metrics.NewMetricsManager(),
 	}
 	return rt
 }
@@ -205,7 +206,6 @@ func (th *TestHarness) WithMockCSIDriver(t *testing.T) *TestHarness {
 	mockController := gomock.NewController(t)
 	identityServer := driver.NewMockIdentityServer(mockController)
 	snapshotMetadataServer := driver.NewMockSnapshotMetadataServer(mockController)
-	metricsManager := metrics.NewCSIMetricsManagerForSidecar("" /* driverName */)
 	drv := driver.NewMockCSIDriver(&driver.MockCSIDriverServers{
 		Identity:         identityServer,
 		SnapshotMetadata: snapshotMetadataServer,
@@ -215,7 +215,7 @@ func (th *TestHarness) WithMockCSIDriver(t *testing.T) *TestHarness {
 
 	// Create a client connection to it
 	addr := drv.Address()
-	csiConn, err := connection.Connect(context.Background(), addr, metricsManager)
+	csiConn, err := connection.Connect(context.Background(), addr, nil)
 	if err != nil {
 		t.Fatal("Connect", err)
 	}
