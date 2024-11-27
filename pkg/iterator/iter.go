@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"strings"
 
 	"google.golang.org/grpc"
 	grpcCreds "google.golang.org/grpc/credentials"
@@ -39,7 +40,15 @@ var (
 	ErrCancelled   = errors.New("enumeration cancelled")
 )
 
-const DefaultTokenExpirySeconds = int64(600)
+const (
+	DefaultTokenExpirySeconds = int64(600)
+
+	// See "Service account tokens" in
+	// https://kubernetes.io/docs/reference/access-authn-authz/authentication/.
+	// It turns out that a service account name starts with a well defined prefix
+	// that is guaranteed not to match any other user name.
+	K8sServiceAccountUserNamePrefix = "system:serviceaccount:"
+)
 
 // GetSnapshotMetadata enumerates either the allocated blocks of a
 // VolumeSnapshot object, or the blocks changed between a pair of
@@ -92,6 +101,7 @@ type Args struct {
 
 	// ServiceAccount is used to construct a security token
 	// with the audience string from the SnapshotMetadataService CR.
+	// If unspecified the default for the given client will be used.
 	ServiceAccount string
 
 	// TokenExpirySecs specifies the time in seconds after which the
@@ -108,8 +118,6 @@ func (a Args) Validate() error {
 		return fmt.Errorf("%w: missing Namespace", ErrInvalidArgs)
 	case a.SnapshotName == "":
 		return fmt.Errorf("%w: missing SnapshotName", ErrInvalidArgs)
-	case a.ServiceAccount == "":
-		return fmt.Errorf("%w: missing ServiceAccount", ErrInvalidArgs)
 	case a.TokenExpirySecs < 0:
 		return fmt.Errorf("%w: invalid TokenExpirySecs", ErrInvalidArgs)
 	case a.MaxResults < 0:
@@ -154,8 +162,9 @@ type iterator struct {
 
 type iteratorHelpers interface {
 	getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error)
+	getDefaultServiceAccount(ctx context.Context) (string, error)
 	getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error)
-	createSecurityToken(ctx context.Context, audience string) (string, error)
+	createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error)
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
 	getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
 	getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
@@ -182,6 +191,14 @@ func newIterator(args Args) *iterator {
 func (iter *iterator) run(ctx context.Context) error {
 	var err error
 
+	serviceAccount := iter.ServiceAccount // optional field
+	if serviceAccount == "" {
+		serviceAccount, err = iter.h.getDefaultServiceAccount(ctx)
+		if err != nil {
+			return err
+		}
+	}
+
 	csiDriver := iter.CSIDriver // optional field
 	if csiDriver == "" {
 		if csiDriver, err = iter.h.getCSIDriverFromPrimarySnapshot(ctx); err != nil {
@@ -196,7 +213,7 @@ func (iter *iterator) run(ctx context.Context) error {
 	}
 
 	// get the security token to use in the API
-	securityToken, err := iter.h.createSecurityToken(ctx, smsCR.Spec.Audience)
+	securityToken, err := iter.h.createSecurityToken(ctx, serviceAccount, smsCR.Spec.Audience)
 	if err != nil {
 		return err
 	}
@@ -223,6 +240,22 @@ func (iter *iterator) run(ctx context.Context) error {
 	}
 
 	return err
+}
+
+func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (string, error) {
+	ssr, err := iter.KubeClient.AuthenticationV1().SelfSubjectReviews().Create(ctx, &authv1.SelfSubjectReview{}, apimetav1.CreateOptions{})
+	if err != nil {
+		return "", fmt.Errorf("SelfSubjectReviews.Create(): %w", err)
+	}
+
+	if strings.HasPrefix(ssr.Status.UserInfo.Username, K8sServiceAccountUserNamePrefix) {
+		fields := strings.Split(ssr.Status.UserInfo.Username, ":")
+		if len(fields) == 4 {
+			return fields[3], nil
+		}
+	}
+
+	return "", fmt.Errorf("%w: ServiceAccount unspecified and default cannot be determined", ErrInvalidArgs)
 }
 
 // getCSIDriverFromPrimarySnapshot loads the bound VolumeSnapshotContent
@@ -258,7 +291,7 @@ func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDrive
 
 // createSecurityToken will create a security token for the specified storage
 // account using the audience string from the SnapshotMetadataService CR.
-func (iter *iterator) createSecurityToken(ctx context.Context, audience string) (string, error) {
+func (iter *iterator) createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error) {
 	tokenRequest := authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
 			Audiences:         []string{audience},
@@ -266,15 +299,15 @@ func (iter *iterator) createSecurityToken(ctx context.Context, audience string) 
 		},
 	}
 
-	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(iter.Namespace).CreateToken(ctx, iter.ServiceAccount, &tokenRequest, apimetav1.CreateOptions{})
+	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(iter.Namespace).CreateToken(ctx, serviceAccount, &tokenRequest, apimetav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("ServiceAccounts.CreateToken(%s): %v", iter.ServiceAccount, err)
+		return "", fmt.Errorf("ServiceAccounts.CreateToken(%s): %v", serviceAccount, err)
 	}
 
 	return tokenResp.Status.Token, nil
 }
 
-func (iter *iterator) getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error) {
+func (iter *iterator) getGRPCClient(caCert []byte, url string) (api.SnapshotMetadataClient, error) {
 	// Add the CA to the cert pool
 	certPool := x509.NewCertPool()
 	if !certPool.AppendCertsFromPEM(caCert) {
@@ -282,9 +315,9 @@ func (iter *iterator) getGRPCClient(caCert []byte, URL string) (api.SnapshotMeta
 	}
 
 	tlsCredentials := grpcCreds.NewTLS(&tls.Config{RootCAs: certPool})
-	conn, err := grpc.NewClient(URL, grpc.WithTransportCredentials(tlsCredentials))
+	conn, err := grpc.NewClient(url, grpc.WithTransportCredentials(tlsCredentials))
 	if err != nil {
-		return nil, fmt.Errorf("grpc.NewClient(%s): %w", URL, err)
+		return nil, fmt.Errorf("grpc.NewClient(%s): %w", url, err)
 	}
 
 	return api.NewSnapshotMetadataClient(conn), nil

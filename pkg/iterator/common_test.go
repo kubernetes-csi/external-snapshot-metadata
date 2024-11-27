@@ -61,6 +61,10 @@ type testHarness struct {
 	InSnapshotMetadataIteratorDoneNR int
 
 	// fake helpers
+	CalledGetDefaultServiceAccount bool
+	RetGetDefaultServiceAccount    string
+	RetGetDefaultServiceAccountErr error
+
 	CalledGetCSIDriverFromPrimarySnapshot bool
 	RetGetCSIDriverFromPrimarySnapshot    string
 	RetGetCSIDriverFromPrimarySnapshotErr error
@@ -69,6 +73,7 @@ type testHarness struct {
 	RetGetSnapshotMetadataServiceCRService  *smsCRv1alpha1.SnapshotMetadataService
 	RetGetSnapshotMetadataServiceCRErr      error
 
+	InCreateSecurityTokenSA       string
 	InCreateSecurityTokenAudience string
 	RetCreateSecurityToken        string
 	RetCreateSecurityTokenErr     error
@@ -169,6 +174,16 @@ func (th *testHarness) FakeVS() (*snapshotv1.VolumeSnapshot, *snapshotv1.VolumeS
 	return vs, vsc
 }
 
+func (th *testHarness) FakeAuthSelfSubjectReview() *authv1.SelfSubjectReview {
+	return &authv1.SelfSubjectReview{
+		Status: authv1.SelfSubjectReviewStatus{
+			UserInfo: authv1.UserInfo{
+				Username: K8sServiceAccountUserNamePrefix + th.Namespace + ":" + th.ServiceAccount,
+			},
+		},
+	}
+}
+
 func (th *testHarness) FakeTokenRequest() *authv1.TokenRequest {
 	expirySecs := th.Args().TokenExpirySecs
 	return &authv1.TokenRequest{
@@ -236,6 +251,11 @@ func (th *testHarness) SnapshotMetadataIteratorDone(numberRecords int) {
 }
 
 // fake helpers
+func (th *testHarness) getDefaultServiceAccount(ctx context.Context) (string, error) {
+	th.CalledGetDefaultServiceAccount = true
+	return th.RetGetDefaultServiceAccount, th.RetGetDefaultServiceAccountErr
+}
+
 func (th *testHarness) getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error) {
 	th.CalledGetCSIDriverFromPrimarySnapshot = true
 	return th.RetGetCSIDriverFromPrimarySnapshot, th.RetGetCSIDriverFromPrimarySnapshotErr
@@ -246,7 +266,8 @@ func (th *testHarness) getSnapshotMetadataServiceCR(ctx context.Context, csiDriv
 	return th.RetGetSnapshotMetadataServiceCRService, th.RetGetSnapshotMetadataServiceCRErr
 }
 
-func (th *testHarness) createSecurityToken(ctx context.Context, audience string) (string, error) {
+func (th *testHarness) createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error) {
+	th.InCreateSecurityTokenSA = serviceAccount
 	th.InCreateSecurityTokenAudience = audience
 	return th.RetCreateSecurityToken, th.RetCreateSecurityTokenErr
 }
