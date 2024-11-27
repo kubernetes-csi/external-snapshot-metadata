@@ -32,12 +32,16 @@ crd:
 lint:
 	golangci-lint run
 
-
 # Include release-tools
 
 CMDS=csi-snapshot-metadata
 
 include release-tools/build.make
+
+.PHONY: examples
+examples:
+	mkdir -p bin
+	for d in ./examples/* ; do if [[ -f $$d/main.go ]]; then (cd $$d && go build $(GOFLAGS_VENDOR) -a -ldflags '$(FULL_LDFLAGS)' -o "$(abspath ./bin)/" .); fi; done
 
 # Eventually extend the test target to include lint.
 # Currently the linter is not available in the CI infrastructure.

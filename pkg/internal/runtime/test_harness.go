@@ -181,6 +181,13 @@ func (th *TestHarness) RemoveFakeKubeConfig(t *testing.T) {
 	utiltesting.CloseAndRemove(t, th.fakeKubeConfigFile)
 }
 
+func (th *TestHarness) FakeKubeConfigFileName() string {
+	if th.fakeKubeConfigFile != nil {
+		return th.fakeKubeConfigFile.Name()
+	}
+	return ""
+}
+
 // WithTestTLSFiles will provide temporary but valid TLS files.
 func (th *TestHarness) WithTestTLSFiles(t *testing.T) *TestHarness {
 	th.tlsGenerator = &testTLSCertGenerator{}
