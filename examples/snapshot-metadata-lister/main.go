@@ -50,6 +50,9 @@ If a previous VolumeSnapshot object is also specified then the metadata
 describes the content changes between the two snapshots, which must both
 be from the same PersistentVolume.
 
+The command is usually invoked in a Pod in the cluster, as the gRPC client
+needs to resolve the DNS address in the SnapshotMetadataService CR.
+
 ` + shortUsageFmt + `
 
 Flags:
@@ -80,7 +83,7 @@ func parseFlags() {
 		flag.StringVar(&kubeConfig, "kubeconfig", "", "Path to the kubeconfig file.")
 	}
 
-	flag.StringVar(&args.ServiceAccount, "service-account", "default", "ServiceAccount used to create a security token.")
+	flag.StringVar(&args.ServiceAccount, "service-account", "", "ServiceAccount used to create a security token. If unspecified the ServiceAccount of the Pod in which the command is invoked will be used.")
 
 	flag.Int64Var(&args.TokenExpirySecs, "token-expiry", 600, "Expiry time in seconds for the security token.")
 	flag.Int64Var(&args.StartingOffset, "starting-offset", 0, "The starting byte offset.")

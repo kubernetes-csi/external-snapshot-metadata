@@ -61,12 +61,7 @@ func TestValidateArgs(t *testing.T) {
 	err = args.Validate()
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrInvalidArgs)
-	assert.ErrorContains(t, err, "ServiceAccount")
-
-	args.ServiceAccount = "service-account"
-	err = args.Validate()
-	assert.Error(t, err)
-	assert.ErrorIs(t, err, ErrInvalidArgs)
+	// assert.ErrorContains(t, err, "ServiceAccount")
 	assert.ErrorContains(t, err, "KubeClient")
 
 	args.Clients.KubeClient = fake.NewSimpleClientset()
@@ -123,23 +118,27 @@ func TestNewIterator(t *testing.T) {
 func TestRun(t *testing.T) {
 	testErr := errors.New("test-error")
 
-	t.Run("get-changed-blocks-no-csi-driver", func(t *testing.T) {
+	t.Run("get-changed-blocks-no-csi-driver-no-sa", func(t *testing.T) {
 		th := newTestHarness()
 		th.RetGetCSIDriverFromPrimarySnapshot = th.CSIDriver
 		th.RetGetSnapshotMetadataServiceCRService = th.FakeCR()
 		th.RetGetGRPCClient = th.GRPCSnapshotMetadataClient(t)
 		th.RetCreateSecurityToken = "security-token"
+		th.RetGetDefaultServiceAccount = th.ServiceAccount
 
 		iter := th.NewTestIterator()
 		iter.recordNum = 100
+		iter.ServiceAccount = ""
 		assert.NotEmpty(t, iter.PrevSnapshotName) // changed block flow
 
 		err := iter.run(context.Background())
 		assert.NoError(t, err)
 
 		// check data passed through the helpers
+		assert.True(t, th.CalledGetDefaultServiceAccount)
 		assert.True(t, th.CalledGetCSIDriverFromPrimarySnapshot)
 		assert.Equal(t, th.CSIDriver, th.InGetSnapshotMetadataServiceCRCSIDriver)
+		assert.Equal(t, th.ServiceAccount, th.InCreateSecurityTokenSA)
 		assert.Equal(t, th.Audience, th.InCreateSecurityTokenAudience)
 		assert.Equal(t, th.CACert, th.InGetGRPCClientCA)
 		assert.Equal(t, th.Address, th.InGetGRPCClientURL)
@@ -298,6 +297,49 @@ func TestRun(t *testing.T) {
 	})
 }
 
+func TestGetDefaultServiceAccount(t *testing.T) {
+	t.Run("self-subject-review-err", func(t *testing.T) {
+		th := newTestHarness()
+		args := th.Args()
+		args.ServiceAccount = ""
+
+		// invoke via GetSnapshotMetadata directly to cover that code path
+		err := GetSnapshotMetadata(context.Background(), args)
+		assert.Error(t, err)
+		assert.ErrorContains(t, err, "SelfSubjectReviews.Create")
+	})
+
+	t.Run("not-a-service-account", func(t *testing.T) {
+		th := newTestHarness()
+		iter := th.NewTestIterator()
+
+		th.FakeKubeClient.PrependReactor("create", "selfsubjectreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			ssr := th.FakeAuthSelfSubjectReview()
+			ssr.Status.UserInfo.Username += ":additionalfield"
+			return true, ssr, nil
+		})
+
+		sa, err := iter.getDefaultServiceAccount(context.Background())
+		assert.Error(t, err)
+		assert.ErrorIs(t, err, ErrInvalidArgs)
+		assert.Empty(t, sa)
+	})
+
+	t.Run("success", func(t *testing.T) {
+		th := newTestHarness()
+		iter := th.NewTestIterator()
+
+		th.FakeKubeClient.PrependReactor("create", "selfsubjectreviews", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+			ssr := th.FakeAuthSelfSubjectReview()
+			return true, ssr, nil
+		})
+
+		sa, err := iter.getDefaultServiceAccount(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, th.ServiceAccount, sa)
+	})
+}
+
 func TestGetCSIDriverFromPrimarySnapshot(t *testing.T) {
 	t.Run("snapshot-get-err", func(t *testing.T) {
 		th := newTestHarness()
@@ -425,7 +467,7 @@ func TestCreateSecurityToken(t *testing.T) {
 		th := newTestHarness()
 		iter := th.NewTestIterator()
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.Audience)
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "ServiceAccounts.CreateToken")
 		assert.Empty(t, securityToken)
@@ -439,7 +481,7 @@ func TestCreateSecurityToken(t *testing.T) {
 			return true, th.FakeTokenRequest(), nil
 		})
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.Audience)
 		assert.NoError(t, err)
 		assert.Equal(t, th.SecurityToken, securityToken)
 	})
