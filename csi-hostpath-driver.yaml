@@ -1,0 +1,297 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  labels:
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/instance: hostpath.csi.k8s.io
+    app.kubernetes.io/name: csi-hostpathplugin
+    app.kubernetes.io/part-of: csi-driver-host-path
+    apps.kubernetes.io/pod-index: "0"
+    controller-revision-hash: csi-hostpathplugin-6cb848dd5c
+    statefulset.kubernetes.io/pod-name: csi-hostpathplugin-0
+  name: csi-hostpathplugin-0
+  namespace: default
+  ownerReferences:
+  - apiVersion: apps/v1
+    blockOwnerDeletion: true
+    controller: true
+    kind: StatefulSet
+    name: csi-hostpathplugin
+    uid: ff96e619-772a-46a1-939f-1020e1392e99
+  resourceVersion: "785"
+  uid: 3e7d8d53-bff4-4388-acc0-a7f5d2e5ade6
+spec:
+  containers:
+  - args:
+    - --drivername=hostpath.csi.k8s.io
+    - --v=5
+    - --endpoint=$(CSI_ENDPOINT)
+    - --nodeid=$(KUBE_NODE_NAME)
+    - --enable-snapshot-metadata=true
+    env:
+    - name: CSI_ENDPOINT
+      value: unix:///csi/csi.sock
+    - name: KUBE_NODE_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: spec.nodeName
+    image: quay.io/mpraveen/hostpathplugin:cbt
+    imagePullPolicy: IfNotPresent
+    livenessProbe:
+      failureThreshold: 5
+      httpGet:
+        path: /healthz
+        port: healthz
+        scheme: HTTP
+      initialDelaySeconds: 10
+      periodSeconds: 2
+      successThreshold: 1
+      timeoutSeconds: 3
+    name: hostpath
+    ports:
+    - containerPort: 9898
+      name: healthz
+      protocol: TCP
+    resources: {}
+    securityContext:
+      privileged: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/lib/kubelet/pods
+      mountPropagation: Bidirectional
+      name: mountpoint-dir
+    - mountPath: /var/lib/kubelet/plugins
+      mountPropagation: Bidirectional
+      name: plugins-dir
+    - mountPath: /csi-data-dir
+      name: csi-data-dir
+    - mountPath: /dev
+      name: dev-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - --v=5
+    - --csi-address=$(ADDRESS)
+    - --leader-election
+    env:
+    - name: ADDRESS
+      value: /csi/csi.sock
+    image: registry.k8s.io/sig-storage/csi-external-health-monitor-controller:v0.13.0
+    imagePullPolicy: IfNotPresent
+    name: csi-external-health-monitor-controller
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - --v=5
+    - --csi-address=/csi/csi.sock
+    - --kubelet-registration-path=/var/lib/kubelet/plugins/csi-hostpath/csi.sock
+    env:
+    - name: KUBE_NODE_NAME
+      valueFrom:
+        fieldRef:
+          apiVersion: v1
+          fieldPath: spec.nodeName
+    image: registry.k8s.io/sig-storage/csi-node-driver-registrar:v2.12.0
+    imagePullPolicy: IfNotPresent
+    name: node-driver-registrar
+    resources: {}
+    securityContext:
+      privileged: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /registration
+      name: registration-dir
+    - mountPath: /csi-data-dir
+      name: csi-data-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - --csi-address=/csi/csi.sock
+    - --health-port=9898
+    image: registry.k8s.io/sig-storage/livenessprobe:v2.14.0
+    imagePullPolicy: IfNotPresent
+    name: liveness-probe
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - --v=5
+    - --csi-address=/csi/csi.sock
+    image: registry.k8s.io/sig-storage/csi-attacher:v4.7.0
+    imagePullPolicy: IfNotPresent
+    name: csi-attacher
+    resources: {}
+    securityContext:
+      privileged: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - -v=5
+    - --csi-address=/csi/csi.sock
+    - --feature-gates=Topology=true
+    image: registry.k8s.io/sig-storage/csi-provisioner:v5.1.0
+    imagePullPolicy: IfNotPresent
+    name: csi-provisioner
+    resources: {}
+    securityContext:
+      privileged: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - -v=5
+    - -csi-address=/csi/csi.sock
+    image: registry.k8s.io/sig-storage/csi-resizer:v1.12.0
+    imagePullPolicy: IfNotPresent
+    name: csi-resizer
+    resources: {}
+    securityContext:
+      privileged: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - -v=5
+    - --csi-address=/csi/csi.sock
+    image: registry.k8s.io/sig-storage/csi-snapshotter:v8.1.0
+    imagePullPolicy: IfNotPresent
+    name: csi-snapshotter
+    resources: {}
+    securityContext:
+      privileged: true
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  - args:
+    - --v=5
+    - --port=50051
+    - --csi-address=/csi/csi.sock
+    - --tls-cert=/tmp/certificates/tls.crt
+    - --tls-key=/tmp/certificates/tls.key
+    image: gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:main
+    imagePullPolicy: IfNotPresent
+    name: csi-snapshot-metadata
+    resources: {}
+    terminationMessagePath: /dev/termination-log
+    terminationMessagePolicy: File
+    volumeMounts:
+    - mountPath: /csi
+      name: socket-dir
+    - mountPath: /tmp/certificates
+      name: csi-snapshot-metadata-certs
+      readOnly: true
+    - mountPath: /var/run/secrets/kubernetes.io/serviceaccount
+      name: kube-api-access-wbpwx
+      readOnly: true
+  dnsPolicy: ClusterFirst
+  enableServiceLinks: true
+  hostname: csi-hostpathplugin-0
+  nodeName: test
+  preemptionPolicy: PreemptLowerPriority
+  priority: 0
+  restartPolicy: Always
+  schedulerName: default-scheduler
+  securityContext: {}
+  serviceAccount: csi-hostpathplugin-sa
+  serviceAccountName: csi-hostpathplugin-sa
+  subdomain: csi-hostpathplugin
+  terminationGracePeriodSeconds: 30
+  tolerations:
+  - effect: NoExecute
+    key: node.kubernetes.io/not-ready
+    operator: Exists
+    tolerationSeconds: 300
+  - effect: NoExecute
+    key: node.kubernetes.io/unreachable
+    operator: Exists
+    tolerationSeconds: 300
+  volumes:
+  - hostPath:
+      path: /var/lib/kubelet/plugins/csi-hostpath
+      type: DirectoryOrCreate
+    name: socket-dir
+  - hostPath:
+      path: /var/lib/kubelet/pods
+      type: DirectoryOrCreate
+    name: mountpoint-dir
+  - hostPath:
+      path: /var/lib/kubelet/plugins_registry
+      type: Directory
+    name: registration-dir
+  - hostPath:
+      path: /var/lib/kubelet/plugins
+      type: Directory
+    name: plugins-dir
+  - hostPath:
+      path: /var/lib/csi-hostpath-data/
+      type: DirectoryOrCreate
+    name: csi-data-dir
+  - hostPath:
+      path: /dev
+      type: Directory
+    name: dev-dir
+  - name: csi-snapshot-metadata-certs
+    secret:
+      defaultMode: 420
+      secretName: csi-snapshot-metadata-certs
+  - name: kube-api-access-wbpwx
+    projected:
+      defaultMode: 420
+      sources:
+      - serviceAccountToken:
+          expirationSeconds: 3607
+          path: token
+      - configMap:
+          items:
+          - key: ca.crt
+            path: ca.crt
+          name: kube-root-ca.crt
+      - downwardAPI:
+          items:
+          - fieldRef:
+              apiVersion: v1
+              fieldPath: metadata.namespace
+            path: namespace

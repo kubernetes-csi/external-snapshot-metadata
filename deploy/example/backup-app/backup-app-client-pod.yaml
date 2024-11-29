@@ -1,0 +1,12 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-app-client
+  namespace: backup-app-namespace
+spec:
+  serviceAccount: backup-app-service-account
+  serviceAccountName: backup-app-service-account
+  containers:
+  - image: backup-app-client:test
+    imagePullPolicy: IfNotPresent
+    name: client

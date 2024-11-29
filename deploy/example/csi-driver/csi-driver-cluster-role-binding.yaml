@@ -10,4 +10,4 @@ subjects:
 - kind: ServiceAccount
   name: csi-snapshot-metadata
   # Replace if want to install in other namespace
-  namespace: csi-driver
+  namespace: default
