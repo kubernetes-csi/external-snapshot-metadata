@@ -83,7 +83,8 @@ func parseFlags() {
 		flag.StringVar(&kubeConfig, "kubeconfig", "", "Path to the kubeconfig file.")
 	}
 
-	flag.StringVar(&args.ServiceAccount, "service-account", "", "ServiceAccount used to create a security token. If unspecified the ServiceAccount of the Pod in which the command is invoked will be used.")
+	flag.StringVar(&args.SAName, "service-account", "", "ServiceAccount used to create a security token. If unspecified the ServiceAccount of the Pod in which the command is invoked will be used.")
+	flag.StringVar(&args.SANamespace, "service-account-namespace", "", "Namespace of the ServiceAccount used to create a security token. If unspecified the Namespace of the Pod in which the command is invoked will be used.")
 
 	flag.Int64Var(&args.TokenExpirySecs, "token-expiry", 600, "Expiry time in seconds for the security token.")
 	flag.Int64Var(&args.StartingOffset, "starting-offset", 0, "The starting byte offset.")

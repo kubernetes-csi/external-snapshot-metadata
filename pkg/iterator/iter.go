@@ -99,10 +99,11 @@ type Args struct {
 	// the VolumeSnapshot specified by the SnapshotName field.
 	CSIDriver string
 
-	// ServiceAccount is used to construct a security token
+	// Specify the ServiceAccount object used to construct a security token
 	// with the audience string from the SnapshotMetadataService CR.
-	// If unspecified the default for the given client will be used.
-	ServiceAccount string
+	// If either of the following fields are unspecified, the default for the given client will be used.
+	SANamespace string
+	SAName      string
 
 	// TokenExpirySecs specifies the time in seconds after which the
 	// security token will expire.
@@ -122,6 +123,10 @@ func (a Args) Validate() error {
 		return fmt.Errorf("%w: invalid TokenExpirySecs", ErrInvalidArgs)
 	case a.MaxResults < 0:
 		return fmt.Errorf("%w: invalid MaxResults", ErrInvalidArgs)
+	case a.SANamespace == "" && a.SAName != "":
+		return fmt.Errorf("%w: SAName provided but SANamespace missing", ErrInvalidArgs)
+	case a.SANamespace != "" && a.SAName == "":
+		return fmt.Errorf("%w: SANamespace provided but SAName missing", ErrInvalidArgs)
 	}
 
 	if err := a.Clients.Validate(); err != nil {
@@ -162,9 +167,9 @@ type iterator struct {
 
 type iteratorHelpers interface {
 	getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error)
-	getDefaultServiceAccount(ctx context.Context) (string, error)
+	getDefaultServiceAccount(ctx context.Context) (string, string, error)
 	getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error)
-	createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error)
+	createSecurityToken(ctx context.Context, saNamespace, saName, audience string) (string, error)
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
 	getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
 	getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
@@ -191,9 +196,10 @@ func newIterator(args Args) *iterator {
 func (iter *iterator) run(ctx context.Context) error {
 	var err error
 
-	serviceAccount := iter.ServiceAccount // optional field
-	if serviceAccount == "" {
-		serviceAccount, err = iter.h.getDefaultServiceAccount(ctx)
+	saName := iter.SAName           // optional field
+	saNamespace := iter.SANamespace // optional field
+	if saName == "" {
+		saNamespace, saName, err = iter.h.getDefaultServiceAccount(ctx)
 		if err != nil {
 			return err
 		}
@@ -213,7 +219,7 @@ func (iter *iterator) run(ctx context.Context) error {
 	}
 
 	// get the security token to use in the API
-	securityToken, err := iter.h.createSecurityToken(ctx, serviceAccount, smsCR.Spec.Audience)
+	securityToken, err := iter.h.createSecurityToken(ctx, saNamespace, saName, smsCR.Spec.Audience)
 	if err != nil {
 		return err
 	}
@@ -242,20 +248,19 @@ func (iter *iterator) run(ctx context.Context) error {
 	return err
 }
 
-func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (string, error) {
+func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (namespace string, name string, err error) {
 	ssr, err := iter.KubeClient.AuthenticationV1().SelfSubjectReviews().Create(ctx, &authv1.SelfSubjectReview{}, apimetav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("SelfSubjectReviews.Create(): %w", err)
+		return "", "", fmt.Errorf("SelfSubjectReviews.Create(): %w", err)
 	}
-
 	if strings.HasPrefix(ssr.Status.UserInfo.Username, K8sServiceAccountUserNamePrefix) {
 		fields := strings.Split(ssr.Status.UserInfo.Username, ":")
 		if len(fields) == 4 {
-			return fields[3], nil
+			return fields[2], fields[3], nil
 		}
 	}
 
-	return "", fmt.Errorf("%w: ServiceAccount unspecified and default cannot be determined", ErrInvalidArgs)
+	return "", "", fmt.Errorf("%w: ServiceAccount unspecified and default cannot be determined", ErrInvalidArgs)
 }
 
 // getCSIDriverFromPrimarySnapshot loads the bound VolumeSnapshotContent
@@ -291,7 +296,7 @@ func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDrive
 
 // createSecurityToken will create a security token for the specified storage
 // account using the audience string from the SnapshotMetadataService CR.
-func (iter *iterator) createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error) {
+func (iter *iterator) createSecurityToken(ctx context.Context, sa, saNamespace, audience string) (string, error) {
 	tokenRequest := authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
 			Audiences:         []string{audience},
@@ -299,9 +304,10 @@ func (iter *iterator) createSecurityToken(ctx context.Context, serviceAccount, a
 		},
 	}
 
-	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(iter.Namespace).CreateToken(ctx, serviceAccount, &tokenRequest, apimetav1.CreateOptions{})
+	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(saNamespace).
+		CreateToken(ctx, sa, &tokenRequest, apimetav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("ServiceAccounts.CreateToken(%s): %v", serviceAccount, err)
+		return "", fmt.Errorf("ServiceAccounts.CreateToken(%s/%s): %v", saNamespace, sa, err)
 	}
 
 	return tokenResp.Status.Token, nil

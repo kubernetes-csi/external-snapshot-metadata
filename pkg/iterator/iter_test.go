@@ -97,6 +97,24 @@ func TestValidateArgs(t *testing.T) {
 	assert.Error(t, err)
 	assert.ErrorIs(t, err, ErrInvalidArgs)
 	assert.ErrorContains(t, err, "MaxResults")
+
+	args.MaxResults = 5
+	args.SAName = "serviceAccount"
+	err = args.Validate()
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "SAName provided")
+
+	args.SAName = ""
+	args.SANamespace = "serviceAccountNamespace"
+	err = args.Validate()
+	assert.Error(t, err)
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "SANamespace provided")
+
+	args.SAName = "serviceAccount"
+	err = args.Validate()
+	assert.NoError(t, err)
 }
 
 func TestNewIterator(t *testing.T) {
@@ -124,11 +142,12 @@ func TestRun(t *testing.T) {
 		th.RetGetSnapshotMetadataServiceCRService = th.FakeCR()
 		th.RetGetGRPCClient = th.GRPCSnapshotMetadataClient(t)
 		th.RetCreateSecurityToken = "security-token"
-		th.RetGetDefaultServiceAccount = th.ServiceAccount
+		th.RetGetDefaultSAName = th.SAName
+		th.RetGetDefaultSANamespace = th.SANamespace
 
 		iter := th.NewTestIterator()
 		iter.recordNum = 100
-		iter.ServiceAccount = ""
+		iter.SAName = ""
 		assert.NotEmpty(t, iter.PrevSnapshotName) // changed block flow
 
 		err := iter.run(context.Background())
@@ -138,7 +157,7 @@ func TestRun(t *testing.T) {
 		assert.True(t, th.CalledGetDefaultServiceAccount)
 		assert.True(t, th.CalledGetCSIDriverFromPrimarySnapshot)
 		assert.Equal(t, th.CSIDriver, th.InGetSnapshotMetadataServiceCRCSIDriver)
-		assert.Equal(t, th.ServiceAccount, th.InCreateSecurityTokenSA)
+		assert.Equal(t, th.SAName, th.InCreateSecurityTokenSAName)
 		assert.Equal(t, th.Audience, th.InCreateSecurityTokenAudience)
 		assert.Equal(t, th.CACert, th.InGetGRPCClientCA)
 		assert.Equal(t, th.Address, th.InGetGRPCClientURL)
@@ -301,7 +320,8 @@ func TestGetDefaultServiceAccount(t *testing.T) {
 	t.Run("self-subject-review-err", func(t *testing.T) {
 		th := newTestHarness()
 		args := th.Args()
-		args.ServiceAccount = ""
+		args.SAName = ""
+		args.SANamespace = ""
 
 		// invoke via GetSnapshotMetadata directly to cover that code path
 		err := GetSnapshotMetadata(context.Background(), args)
@@ -319,10 +339,11 @@ func TestGetDefaultServiceAccount(t *testing.T) {
 			return true, ssr, nil
 		})
 
-		sa, err := iter.getDefaultServiceAccount(context.Background())
+		saNS, saName, err := iter.getDefaultServiceAccount(context.Background())
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, ErrInvalidArgs)
-		assert.Empty(t, sa)
+		assert.Empty(t, saName)
+		assert.Empty(t, saNS)
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -334,9 +355,10 @@ func TestGetDefaultServiceAccount(t *testing.T) {
 			return true, ssr, nil
 		})
 
-		sa, err := iter.getDefaultServiceAccount(context.Background())
+		saNS, saName, err := iter.getDefaultServiceAccount(context.Background())
 		assert.NoError(t, err)
-		assert.Equal(t, th.ServiceAccount, sa)
+		assert.Equal(t, th.SAName, saName)
+		assert.Equal(t, th.SANamespace, saNS)
 	})
 }
 
@@ -467,7 +489,7 @@ func TestCreateSecurityToken(t *testing.T) {
 		th := newTestHarness()
 		iter := th.NewTestIterator()
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.SAName, th.SANamespace, th.Audience)
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "ServiceAccounts.CreateToken")
 		assert.Empty(t, securityToken)
@@ -481,7 +503,7 @@ func TestCreateSecurityToken(t *testing.T) {
 			return true, th.FakeTokenRequest(), nil
 		})
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.SAName, th.SANamespace, th.Audience)
 		assert.NoError(t, err)
 		assert.Equal(t, th.SecurityToken, securityToken)
 	})
