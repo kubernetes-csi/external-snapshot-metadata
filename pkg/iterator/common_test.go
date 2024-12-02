@@ -37,17 +37,18 @@ import (
 )
 
 type testHarness struct {
-	Address          string
-	Audience         string
-	CACert           []byte
-	CSIDriver        string
-	MaxResults       int32
-	Namespace        string
-	PrevSnapshotName string
-	SecurityToken    string
-	ServiceAccount   string
-	SnapshotName     string
-	StartingOffset   int64
+	Address                 string
+	Audience                string
+	CACert                  []byte
+	CSIDriver               string
+	MaxResults              int32
+	Namespace               string
+	PrevSnapshotName        string
+	SecurityToken           string
+	ServiceAccount          string
+	ServiceAccountNamespace string
+	SnapshotName            string
+	StartingOffset          int64
 
 	FakeKubeClient     *fake.Clientset
 	FakeSnapshotClient *fakesnapshot.Clientset
@@ -61,9 +62,10 @@ type testHarness struct {
 	InSnapshotMetadataIteratorDoneNR int
 
 	// fake helpers
-	CalledGetDefaultServiceAccount bool
-	RetGetDefaultServiceAccount    string
-	RetGetDefaultServiceAccountErr error
+	CalledGetDefaultServiceAccount       bool
+	RetGetDefaultServiceAccount          string
+	RetGetDefaultServiceAccountNamespace string
+	RetGetDefaultServiceAccountErr       error
 
 	CalledGetCSIDriverFromPrimarySnapshot bool
 	RetGetCSIDriverFromPrimarySnapshot    string
@@ -73,10 +75,11 @@ type testHarness struct {
 	RetGetSnapshotMetadataServiceCRService  *smsCRv1alpha1.SnapshotMetadataService
 	RetGetSnapshotMetadataServiceCRErr      error
 
-	InCreateSecurityTokenSA       string
-	InCreateSecurityTokenAudience string
-	RetCreateSecurityToken        string
-	RetCreateSecurityTokenErr     error
+	InCreateSecurityTokenSA          string
+	InCreateSecurityTokenSANamespace string
+	InCreateSecurityTokenAudience    string
+	RetCreateSecurityToken           string
+	RetCreateSecurityTokenErr        error
 
 	InGetGRPCClientCA   []byte
 	InGetGRPCClientURL  string
@@ -96,15 +99,16 @@ type testHarness struct {
 
 func newTestHarness() *testHarness {
 	return &testHarness{
-		Namespace:        "namespace",
-		SnapshotName:     "snapshotName",
-		PrevSnapshotName: "prevSnapshotName",
-		ServiceAccount:   "serviceAccount",
-		CSIDriver:        "csiDriver",
-		Audience:         "audience",
-		Address:          "sidecar.csiDriver.k8s.local", // invalid
-		CACert:           []byte{1, 2, 3},               // invalid
-		SecurityToken:    "securityToken",
+		Namespace:               "namespace",
+		SnapshotName:            "snapshotName",
+		PrevSnapshotName:        "prevSnapshotName",
+		ServiceAccount:          "serviceAccount",
+		ServiceAccountNamespace: "serviceAccountNamespace",
+		CSIDriver:               "csiDriver",
+		Audience:                "audience",
+		Address:                 "sidecar.csiDriver.k8s.local", // invalid
+		CACert:                  []byte{1, 2, 3},               // invalid
+		SecurityToken:           "securityToken",
 
 		FakeKubeClient:     fake.NewClientset(),
 		FakeSnapshotClient: fakesnapshot.NewSimpleClientset(),
@@ -178,7 +182,7 @@ func (th *testHarness) FakeAuthSelfSubjectReview() *authv1.SelfSubjectReview {
 	return &authv1.SelfSubjectReview{
 		Status: authv1.SelfSubjectReviewStatus{
 			UserInfo: authv1.UserInfo{
-				Username: K8sServiceAccountUserNamePrefix + th.Namespace + ":" + th.ServiceAccount,
+				Username: K8sServiceAccountUserNamePrefix + th.ServiceAccountNamespace + ":" + th.ServiceAccount,
 			},
 		},
 	}
@@ -251,9 +255,9 @@ func (th *testHarness) SnapshotMetadataIteratorDone(numberRecords int) {
 }
 
 // fake helpers
-func (th *testHarness) getDefaultServiceAccount(ctx context.Context) (string, error) {
+func (th *testHarness) getDefaultServiceAccount(ctx context.Context) (string, string, error) {
 	th.CalledGetDefaultServiceAccount = true
-	return th.RetGetDefaultServiceAccount, th.RetGetDefaultServiceAccountErr
+	return th.RetGetDefaultServiceAccount, th.RetGetDefaultServiceAccountNamespace, th.RetGetDefaultServiceAccountErr
 }
 
 func (th *testHarness) getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error) {
@@ -266,8 +270,9 @@ func (th *testHarness) getSnapshotMetadataServiceCR(ctx context.Context, csiDriv
 	return th.RetGetSnapshotMetadataServiceCRService, th.RetGetSnapshotMetadataServiceCRErr
 }
 
-func (th *testHarness) createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error) {
+func (th *testHarness) createSecurityToken(ctx context.Context, serviceAccount, serviceAccountNamespace, audience string) (string, error) {
 	th.InCreateSecurityTokenSA = serviceAccount
+	th.InCreateSecurityTokenSANamespace = serviceAccountNamespace
 	th.InCreateSecurityTokenAudience = audience
 	return th.RetCreateSecurityToken, th.RetCreateSecurityTokenErr
 }
