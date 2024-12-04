@@ -125,6 +125,7 @@ func TestRun(t *testing.T) {
 		th.RetGetGRPCClient = th.GRPCSnapshotMetadataClient(t)
 		th.RetCreateSecurityToken = "security-token"
 		th.RetGetDefaultServiceAccount = th.ServiceAccount
+		th.RetGetDefaultServiceAccountNamespace = th.ServiceAccountNamespace
 
 		iter := th.NewTestIterator()
 		iter.recordNum = 100
@@ -319,10 +320,11 @@ func TestGetDefaultServiceAccount(t *testing.T) {
 			return true, ssr, nil
 		})
 
-		sa, err := iter.getDefaultServiceAccount(context.Background())
+		sa, saNS, err := iter.getDefaultServiceAccount(context.Background())
 		assert.Error(t, err)
 		assert.ErrorIs(t, err, ErrInvalidArgs)
 		assert.Empty(t, sa)
+		assert.Empty(t, saNS)
 	})
 
 	t.Run("success", func(t *testing.T) {
@@ -334,9 +336,10 @@ func TestGetDefaultServiceAccount(t *testing.T) {
 			return true, ssr, nil
 		})
 
-		sa, err := iter.getDefaultServiceAccount(context.Background())
+		sa, saNS, err := iter.getDefaultServiceAccount(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, th.ServiceAccount, sa)
+		assert.Equal(t, th.ServiceAccountNamespace, saNS)
 	})
 }
 
@@ -467,7 +470,7 @@ func TestCreateSecurityToken(t *testing.T) {
 		th := newTestHarness()
 		iter := th.NewTestIterator()
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.ServiceAccountNamespace, th.Audience)
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "ServiceAccounts.CreateToken")
 		assert.Empty(t, securityToken)
@@ -481,7 +484,7 @@ func TestCreateSecurityToken(t *testing.T) {
 			return true, th.FakeTokenRequest(), nil
 		})
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.ServiceAccount, th.ServiceAccountNamespace, th.Audience)
 		assert.NoError(t, err)
 		assert.Equal(t, th.SecurityToken, securityToken)
 	})

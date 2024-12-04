@@ -1,0 +1,117 @@
+---
+name: Intergration test
+
+on:
+  pull_request
+
+jobs:
+  minikube-ci:
+    name: Intergration test
+    runs-on: ubuntu-latest
+    steps:
+      # - name: Setup tmate session
+      #   uses: mxschmitt/action-tmate@v3
+
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Start minikube
+        uses: medyagh/setup-minikube@latest
+
+      - name: Install Dependencies
+        run: |
+          # Install yq
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && chmod +x /usr/bin/yq
+          yq --version
+
+          # Install kubectl
+          # curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+          # curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl.sha256"
+          # echo "$(cat kubectl.sha256)  kubectl" | sha256sum --check
+          # sudo install -o root -g root -m 0755 kubectl /usr/local/bin/kubectl
+          kubectl version --client --output=yaml
+
+      - name: Build csi-snapshot-metadata container image
+        run: |
+          make build-csi-snapshot-metadata
+          minikube image build -f ./cmd/csi-snapshot-metadata/Dockerfile -t gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:test .
+
+      - name: Build csi-snapshot-client container image
+        run: |
+          minikube image build -f ./deploy/example/backup-app/ContainerFile -t backup-app-client:test .
+ 
+      - name: Deploy snapshot-controller
+        run: |
+          ./scripts/deploy-snapshot-controller.sh deploy
+
+      - name: Deploy csi-hostpath-driver 
+        run: |
+          git clone https://github.com/kubernetes-csi/csi-driver-host-path.git ~/csi-driver-host-path
+          # BELOW IMAGE is build from PR https://github.com/kubernetes-csi/csi-driver-host-path/pull/569
+          # TODO: Replace with official image once it is released.
+          HOSTPATHPLUGIN_REGISTRY="ghcr.io/ipraveenparihar" HOSTPATHPLUGIN_TAG="snapshot-metadata-service" ~/csi-driver-host-path/deploy/kubernetes-1.27/deploy.sh
+
+      - name: Patch csi-hostpath-driver with snapshot-metadata sidecar and other necessary resources
+        run: |
+          ./scripts/deploy-snapshot-metadata.sh deploy
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=csi-hostpath-socat --timeout=300s
+
+      - name: Deploy backup app client
+        run: | 
+          kubectl create ns backup-app-namespace
+          kubectl create -f deploy/example/backup-app/service-account.yaml
+          kubectl create -f deploy/example/backup-app/client-cluster-role.yaml
+          kubectl create -f deploy/example/backup-app/client-cluster-role-binding.yaml
+          kubectl create -f deploy/example/backup-app/backup-app-client-pod.yaml
+
+          kubectl wait -n backup-app-namespace --for=condition=Ready pod/backup-app-client --timeout=300s
+
+      - name: E2E
+        run: |          
+          kubectl create -f ~/csi-driver-host-path/examples/csi-storageclass.yaml
+          yq -i '.spec.resources.requests.storage = "4Ki"' ~/csi-driver-host-path/examples/csi-pvc-block.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-pvc-block.yaml
+          
+          # Failed to pull image "gcr.io/google_containers/busybox": 
+          # [DEPRECATION NOTICE] Docker Image Format v1 and Docker Image manifest version 2, 
+          # schema 1 support is disabled by default and will be removed in an upcoming release.
+          # Suggest the author of gcr.io/google_containers/busybox:latest to upgrade the image to the OCI Format or Docker Image manifest v2, schema 2.
+          # More information at https://docs.docker.com/go/deprecated-image-specs/
+          yq -i '.spec.containers[0].image = "busybox:latest"' ~/csi-driver-host-path/examples/csi-pod-block.yaml
+          yq -i '.spec.containers[0].volumeDevices[0].devicePath = "/dev/block"' ~/csi-driver-host-path/examples/csi-pod-block.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-pod-block.yaml
+          kubectl wait --for=condition=Ready pod/pod-raw --timeout=300s
+
+          # write data into pod
+          kubectl exec -i pod-raw -- sh -c "dd if=/dev/urandom of=/dev/block bs=256 count=1 oflag=direct"
+
+          # take snaphot snap-1
+          yq -i '.metadata.name = "snap-1"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          yq -i '.spec.source.persistentVolumeClaimName = "pvc-raw"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl wait volumesnapshot snap-1 --for=jsonpath='{.status.readyToUse}'=true --timeout=300s
+
+          # call external-snapshot-metadata-client
+          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig=""
+
+          # write data into pod
+          kubectl exec -i pod-raw -- sh -c "dd if=/dev/urandom of=/dev/block bs=256 count=2  oflag=direct"
+
+          # take snapshot snap-2
+          yq -i '.metadata.name = "snap-2"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          yq -i '.spec.source.persistentVolumeClaimName = "pvc-raw"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl wait volumesnapshot snap-2 --for=jsonpath='{.status.readyToUse}'=true --timeout=300s
+
+          # call external-snapshot-metadata-client
+          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig=""
+
+      - name: Wait for running driver pod
+        run: echo "waiting for driver pod to be running" # This is a placeholder for the kubectl wait command 
+
+      - name: Run integration tests
+        run: echo "running integration tests" # This is a placeholder for the actual integration tests    
+
+      - name: Log the status of the failed driver pod
+        if: ${{ failure() }}
+        run: echo "The driver pod is not running" # This is a placeholder for the kubectl describe/logs command

@@ -1,0 +1,8 @@
+FROM golang:1.23-alpine as builder
+WORKDIR /
+COPY . .
+RUN go build -o snapshot-metadata-lister ./examples/snapshot-metadata-lister/main.go
+
+FROM alpine:3.12
+COPY --from=builder /snapshot-metadata-lister /snapshot-metadata-lister
+ENTRYPOINT ["/bin/sleep", "infinity"]

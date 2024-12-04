@@ -6,7 +6,7 @@ kind: StatefulSet
 apiVersion: apps/v1
 metadata:
   name: csi-snapshot-metadata
-  namespace: csi-driver
+  namespace: default
 spec:
   serviceName: "csi-snapshot-metadata"
   replicas: 1

@@ -104,6 +104,9 @@ type Args struct {
 	// If unspecified the default for the given client will be used.
 	ServiceAccount string
 
+	// ServiceAccountNamespace is the namespace of the ServiceAccount.
+	ServiceAccountNamespace string
+
 	// TokenExpirySecs specifies the time in seconds after which the
 	// security token will expire.
 	// If unspecified then the value of DefaultTokenExpirySeconds is used.
@@ -162,9 +165,9 @@ type iterator struct {
 
 type iteratorHelpers interface {
 	getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error)
-	getDefaultServiceAccount(ctx context.Context) (string, error)
+	getDefaultServiceAccount(ctx context.Context) (string, string, error)
 	getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error)
-	createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error)
+	createSecurityToken(ctx context.Context, serviceAccount, serviceAccountNamespace, audience string) (string, error)
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
 	getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
 	getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
@@ -191,9 +194,10 @@ func newIterator(args Args) *iterator {
 func (iter *iterator) run(ctx context.Context) error {
 	var err error
 
-	serviceAccount := iter.ServiceAccount // optional field
+	serviceAccount := iter.ServiceAccount                   // optional field
+	serviceAccountNamespace := iter.ServiceAccountNamespace // optional field
 	if serviceAccount == "" {
-		serviceAccount, err = iter.h.getDefaultServiceAccount(ctx)
+		serviceAccount, serviceAccountNamespace, err = iter.h.getDefaultServiceAccount(ctx)
 		if err != nil {
 			return err
 		}
@@ -213,7 +217,10 @@ func (iter *iterator) run(ctx context.Context) error {
 	}
 
 	// get the security token to use in the API
-	securityToken, err := iter.h.createSecurityToken(ctx, serviceAccount, smsCR.Spec.Audience)
+	securityToken, err := iter.h.createSecurityToken(ctx,
+		serviceAccount,
+		serviceAccountNamespace,
+		smsCR.Spec.Audience)
 	if err != nil {
 		return err
 	}
@@ -242,20 +249,19 @@ func (iter *iterator) run(ctx context.Context) error {
 	return err
 }
 
-func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (string, error) {
+func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (string, string, error) {
 	ssr, err := iter.KubeClient.AuthenticationV1().SelfSubjectReviews().Create(ctx, &authv1.SelfSubjectReview{}, apimetav1.CreateOptions{})
 	if err != nil {
-		return "", fmt.Errorf("SelfSubjectReviews.Create(): %w", err)
+		return "", "", fmt.Errorf("SelfSubjectReviews.Create(): %w", err)
 	}
-
 	if strings.HasPrefix(ssr.Status.UserInfo.Username, K8sServiceAccountUserNamePrefix) {
 		fields := strings.Split(ssr.Status.UserInfo.Username, ":")
 		if len(fields) == 4 {
-			return fields[3], nil
+			return fields[3], fields[2], nil
 		}
 	}
 
-	return "", fmt.Errorf("%w: ServiceAccount unspecified and default cannot be determined", ErrInvalidArgs)
+	return "", "", fmt.Errorf("%w: ServiceAccount unspecified and default cannot be determined", ErrInvalidArgs)
 }
 
 // getCSIDriverFromPrimarySnapshot loads the bound VolumeSnapshotContent
@@ -291,7 +297,10 @@ func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDrive
 
 // createSecurityToken will create a security token for the specified storage
 // account using the audience string from the SnapshotMetadataService CR.
-func (iter *iterator) createSecurityToken(ctx context.Context, serviceAccount, audience string) (string, error) {
+func (iter *iterator) createSecurityToken(ctx context.Context,
+	serviceAccount,
+	serviceAccountNamespace,
+	audience string) (string, error) {
 	tokenRequest := authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
 			Audiences:         []string{audience},
@@ -299,7 +308,8 @@ func (iter *iterator) createSecurityToken(ctx context.Context, serviceAccount, a
 		},
 	}
 
-	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(iter.Namespace).CreateToken(ctx, serviceAccount, &tokenRequest, apimetav1.CreateOptions{})
+	tokenResp, err := iter.KubeClient.CoreV1().ServiceAccounts(serviceAccountNamespace).
+		CreateToken(ctx, serviceAccount, &tokenRequest, apimetav1.CreateOptions{})
 	if err != nil {
 		return "", fmt.Errorf("ServiceAccounts.CreateToken(%s): %v", serviceAccount, err)
 	}
