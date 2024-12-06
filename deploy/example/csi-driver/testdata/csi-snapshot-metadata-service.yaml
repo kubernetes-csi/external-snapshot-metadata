@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: csi-snapshot-metadata
+spec:
+  ports:
+  - name: snapshot-metadata
+    port: 6443
+    protocol: TCP
+    targetPort: 50051
+  selector:
+    app.kubernetes.io/name: csi-hostpathplugin
+    app.kubernetes.io/component: plugin
+    app.kubernetes.io/instance: hostpath.csi.k8s.io
