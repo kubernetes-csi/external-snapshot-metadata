@@ -14,6 +14,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+CSI_PROW_GINKGO_VERSION=v2.22.0
 
 . release-tools/prow.sh
 main
