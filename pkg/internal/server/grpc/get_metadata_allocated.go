@@ -31,7 +31,11 @@ import (
 )
 
 func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stream api.SnapshotMetadata_GetMetadataAllocatedServer) error {
-	ctx := s.getMetadataAllocatedContextWithLogger(req, stream)
+	// Create a timeout context so that failure in either sending to the client or
+	// receiving from the CSI driver will ultimately abort the handler session.
+	// The context could also get canceled by the client.
+	ctx, cancelFn := context.WithTimeout(s.getMetadataAllocatedContextWithLogger(req, stream), s.config.MaxStreamDur)
+	defer cancelFn()
 
 	if err := s.validateGetMetadataAllocatedRequest(req); err != nil {
 		klog.FromContext(ctx).Error(err, "validation failed")
@@ -55,6 +59,7 @@ func (s *Server) GetMetadataAllocated(req *api.GetMetadataAllocatedRequest, stre
 	klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("calling CSI driver", "snapshotId", csiReq.SnapshotId)
 	csiStream, err := csi.NewSnapshotMetadataClient(s.csiConnection()).GetMetadataAllocated(ctx, csiReq)
 	if err != nil {
+		klog.FromContext(ctx).Error(err, "csi.GetMetadataAllocated")
 		return err
 	}
 

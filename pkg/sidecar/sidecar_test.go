@@ -35,6 +35,7 @@ import (
 	"google.golang.org/protobuf/types/known/wrapperspb"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/server/grpc"
 )
 
 func TestSidecarFlagSet(t *testing.T) {
@@ -83,7 +84,7 @@ func TestSidecarFlagSet(t *testing.T) {
 		assert.Equal(t, fmt.Sprintf("%s %s\n", progName, version), string(output))
 	})
 
-	t.Run("default-runtime-args", func(t *testing.T) {
+	t.Run("default-args", func(t *testing.T) {
 		defer saveAndResetGlobalState()()
 
 		expTLSCertFile := "/tls/certFile"
@@ -112,6 +113,11 @@ func TestSidecarFlagSet(t *testing.T) {
 		}
 
 		assert.Equal(t, expRTA, rta)
+
+		rt := &runtime.Runtime{}
+		config := sfs.createServerConfig(rt)
+		assert.Equal(t, rt, config.Runtime)
+		assert.Equal(t, time.Duration(defaultMaxStreamingDurationMin*60), config.MaxStreamDur)
 	})
 }
 
@@ -142,7 +148,7 @@ func TestStartGRPCServerAndValidateCSIDriver(t *testing.T) {
 
 		rt.GRPCPort = -1 // invalid port
 
-		s, err := startGRPCServerAndValidateCSIDriver(rt)
+		s, err := startGRPCServerAndValidateCSIDriver(grpc.ServerConfig{Runtime: rt})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid port")
 		assert.Nil(t, s)
@@ -156,7 +162,7 @@ func TestStartGRPCServerAndValidateCSIDriver(t *testing.T) {
 
 		rt := rth.RuntimeForFakeCSIDriver(t)
 
-		s, err := startGRPCServerAndValidateCSIDriver(rt)
+		s, err := startGRPCServerAndValidateCSIDriver(grpc.ServerConfig{Runtime: rt})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error waiting for CSI driver to become ready") // probe unimplemented.
 		assert.Nil(t, s)
@@ -194,6 +200,7 @@ func TestRun(t *testing.T) {
 
 		sfs := &sidecarFlagSet{}
 		argv := sfs.runtimeArgsToArgv("progName", rt.Args)
+		argv = append(argv, flagMaxStreamingDurationMin, fmt.Sprintf("%d", defaultMaxStreamingDurationMin+1))
 
 		// invoke Run() in a goroutine so as not to block.
 		wg := sync.WaitGroup{}

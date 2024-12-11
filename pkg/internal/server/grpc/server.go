@@ -23,6 +23,7 @@ import (
 	"strconv"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	"google.golang.org/grpc"
@@ -40,10 +41,18 @@ import (
 const (
 	HandlerTraceLogLevel         = 4
 	HandlerDetailedTraceLogLevel = 5
+
+	HandlerDefaultMaxStreamDuration = time.Minute * 10
 )
 
 type ServerConfig struct {
 	Runtime *runtime.Runtime
+
+	// The maximum duration of a streaming session.
+	// The handler will abort if either the CSI driver or
+	// the client do not complete in this time.
+	// If not set then HandlerDefaultMaxStreamDuration is used.
+	MaxStreamDur time.Duration
 }
 
 type Server struct {
@@ -59,6 +68,10 @@ func NewServer(config ServerConfig) (*Server, error) {
 	options, err := buildOptions(config)
 	if err != nil {
 		return nil, err
+	}
+
+	if config.MaxStreamDur <= 0 {
+		config.MaxStreamDur = HandlerDefaultMaxStreamDuration
 	}
 
 	return &Server{

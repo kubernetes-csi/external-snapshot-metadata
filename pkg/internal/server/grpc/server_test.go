@@ -20,6 +20,7 @@ import (
 	"context"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
@@ -75,6 +76,7 @@ func TestNewServer(t *testing.T) {
 		assert.NotNil(t, s)
 		assert.NotNil(t, s.grpcServer)
 		assert.Equal(t, s.config.Runtime, &rt)
+		assert.Equal(t, HandlerDefaultMaxStreamDuration, s.config.MaxStreamDur)
 
 		err = s.Start()
 		assert.Error(t, err)
@@ -89,11 +91,16 @@ func TestNewServer(t *testing.T) {
 		rt.TLSCertFile = rta.TLSCertFile
 		rt.TLSKeyFile = rta.TLSKeyFile
 
-		s, err := NewServer(ServerConfig{Runtime: &rt})
+		expMaxStreamDur := HandlerDefaultMaxStreamDuration + time.Minute
+		s, err := NewServer(ServerConfig{
+			Runtime:      &rt,
+			MaxStreamDur: expMaxStreamDur,
+		})
 		assert.NoError(t, err)
 		assert.NotNil(t, s)
 		assert.NotNil(t, s.grpcServer)
 		assert.Equal(t, s.config.Runtime, &rt)
+		assert.Equal(t, expMaxStreamDur, s.config.MaxStreamDur)
 		assert.False(t, s.isReady()) // initialized to not ready
 
 		err = s.Start()
