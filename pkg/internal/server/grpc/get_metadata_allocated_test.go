@@ -34,6 +34,7 @@ import (
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/csiclientmocks"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 )
 
 func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
@@ -750,4 +751,75 @@ func (f *fakeStreamServerSnapshotAllocated) Send(m *api.GetMetadataAllocatedResp
 
 func (f *fakeStreamServerSnapshotAllocated) verifyResponse(expectedResponse *api.GetMetadataAllocatedResponse) bool {
 	return f.response.String() == expectedResponse.String()
+}
+
+func TestGetMetadataAllocatedClientErrorCancelsDriverStream(t *testing.T) {
+	// special fake CSI server for this test
+	sms := &testSnapshotMetadataServerCtxPropagator{}
+	sms.chanToCloseOnEntry = make(chan struct{})
+	sms.chanToCloseBeforeReturn = make(chan struct{})
+	sms.chanToWaitOnBeforeFirstResponse = make(chan struct{})
+	sms.chanToWaitOnBeforeSecondResponse = make(chan struct{})
+
+	// set up a fake csi driver with the runtime test harness
+	rth := runtime.NewTestHarness().WithFakeKubeConfig(t).WithFakeCSIDriver(t, sms)
+	defer rth.RemoveFakeKubeConfig(t)
+	defer rth.TerminateFakeCSIDriver(t)
+
+	rrt := rth.RuntimeForFakeCSIDriver(t)
+
+	// configure the local test harness to connect to the fake csi driver
+	th := newTestHarness()
+	th.DriverName = rrt.DriverName
+	th.WithFakeClientAPIs()
+	rt := th.Runtime()
+	rt.CSIConn = rrt.CSIConn
+	grpcServer := th.StartGRPCServer(t, rt)
+	defer th.StopGRPCServer(t)
+
+	grpcServer.CSIDriverIsReady()
+
+	// create the cancelable client context
+	ctx, cancelFn := context.WithCancel(context.Background())
+
+	// get the client stream
+	client := th.GRPCSnapshotMetadataClient(t)
+	clientStream, err := client.GetMetadataAllocated(ctx, &api.GetMetadataAllocatedRequest{
+		SecurityToken: th.SecurityToken,
+		Namespace:     th.Namespace,
+		SnapshotName:  "snap-1",
+	})
+	assert.NoError(t, err)
+	assert.NotNil(t, clientStream)
+
+	// synchronize with the fake CSI driver
+	<-sms.chanToCloseOnEntry
+
+	// the fake driver may now send the first response
+	close(sms.chanToWaitOnBeforeFirstResponse)
+
+	r1, e1 := clientStream.Recv() // get the first response
+	assert.NoError(t, e1)
+	assert.NotNil(t, r1)
+
+	// the client cancels the context
+	cancelFn()
+
+	r2, e2 := clientStream.Recv() // fail to get the second response (not yet sent)
+	assert.Error(t, e2)
+	assert.ErrorContains(t, e2, context.Canceled.Error())
+	assert.Nil(t, r2)
+
+	// the fake driver can now send the second response
+	close(sms.chanToWaitOnBeforeSecondResponse)
+
+	// wait for the fake driver method to complete
+	<-sms.chanToCloseBeforeReturn
+
+	// Check the fake driver handler status
+	assert.True(t, sms.handlerCalled)
+	assert.NoError(t, sms.send1Err)
+	assert.ErrorIs(t, sms.streamCtx.Err(), context.Canceled)
+	assert.Error(t, sms.send2Err)
+	assert.ErrorContains(t, sms.send2Err, context.Canceled.Error())
 }
