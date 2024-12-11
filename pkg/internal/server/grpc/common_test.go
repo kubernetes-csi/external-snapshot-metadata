@@ -23,7 +23,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/container-storage-interface/spec/lib/go/csi"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	fakesnapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
 	snapshotutils "github.com/kubernetes-csi/external-snapshotter/v8/pkg/utils"
@@ -432,4 +434,109 @@ func (th *testHarness) SetKlogVerbosity(verboseLevel int, uniquePrefix string) K
 		fs.Var(&level, uniquePrefix+"V2", "test log verbosity level")
 		klog.InitFlags(fs)
 	}
+}
+
+// test data structure for context propagation testing.
+type testSnapshotMetadataServerCtxPropagator struct {
+	*csi.UnimplementedSnapshotMetadataServer
+
+	chanToCloseBeforeReturn          chan struct{}
+	chanToCloseOnEntry               chan struct{}
+	chanToWaitOnBeforeFirstResponse  chan struct{}
+	chanToWaitOnBeforeSecondResponse chan struct{}
+	handlerCalled                    bool
+	send1Err                         error
+	send2Err                         error
+	streamCtx                        context.Context
+	streamGetMetadataAllocatedErr    error
+}
+
+func (s *testSnapshotMetadataServerCtxPropagator) GetMetadataAllocated(req *csi.GetMetadataAllocatedRequest, stream csi.SnapshotMetadata_GetMetadataAllocatedServer) error {
+	return s.sync(stream.Context(),
+		func() error {
+			return stream.Send(&csi.GetMetadataAllocatedResponse{
+				BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*csi.BlockMetadata{
+					{
+						ByteOffset: 0,
+						SizeBytes:  1024,
+					},
+				},
+			})
+		},
+		func() error {
+			return stream.Send(&csi.GetMetadataAllocatedResponse{
+				BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*csi.BlockMetadata{
+					{
+						ByteOffset: 1024,
+						SizeBytes:  1024,
+					},
+				},
+			})
+		})
+}
+
+func (s *testSnapshotMetadataServerCtxPropagator) GetMetadataDelta(req *csi.GetMetadataDeltaRequest, stream csi.SnapshotMetadata_GetMetadataDeltaServer) error {
+	return s.sync(stream.Context(),
+		func() error {
+			return stream.Send(&csi.GetMetadataDeltaResponse{
+				BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*csi.BlockMetadata{
+					{
+						ByteOffset: 0,
+						SizeBytes:  1024,
+					},
+				},
+			})
+		},
+		func() error {
+			return stream.Send(&csi.GetMetadataDeltaResponse{
+				BlockMetadataType:   csi.BlockMetadataType_FIXED_LENGTH,
+				VolumeCapacityBytes: 1024 * 1024 * 1024,
+				BlockMetadata: []*csi.BlockMetadata{
+					{
+						ByteOffset: 1024,
+						SizeBytes:  1024,
+					},
+				},
+			})
+		})
+}
+
+func (s *testSnapshotMetadataServerCtxPropagator) sync(ctx context.Context, sendResp1, sendResp2 func() error) error {
+	if s.chanToCloseOnEntry != nil {
+		close(s.chanToCloseOnEntry)
+	}
+
+	if s.chanToWaitOnBeforeFirstResponse != nil {
+		<-s.chanToWaitOnBeforeFirstResponse
+	}
+
+	// send the first response
+	s.send1Err = sendResp1()
+
+	if s.chanToWaitOnBeforeSecondResponse != nil {
+		<-s.chanToWaitOnBeforeSecondResponse
+	}
+
+	// now wait for the client's canceled context to reach this context
+	for ctx.Err() == nil {
+		time.Sleep(time.Millisecond)
+	}
+
+	// send the next response
+	s.send2Err = sendResp2()
+
+	if s.chanToCloseBeforeReturn != nil {
+		close(s.chanToCloseBeforeReturn)
+	}
+
+	s.handlerCalled = true
+	s.streamCtx = ctx
+
+	return nil
 }

@@ -31,7 +31,13 @@ import (
 )
 
 func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
-	ctx := s.getMetadataDeltaContextWithLogger(req, stream)
+	// Create a cancelable context so that failure in sending to the client would
+	// cancel the context used to communicate with the CSI driver when the stack unwinds.
+	// Note: this may be unnecessary if failure on the client stream Send() is already
+	// propagated to the the returned context in the gRPC runtime, but it is not documented
+	// as such, so this extra step ensures that this will indeed take place.
+	ctx, cancelFn := context.WithCancel(s.getMetadataDeltaContextWithLogger(req, stream))
+	defer cancelFn()
 
 	if err := s.validateGetMetadataDeltaRequest(req); err != nil {
 		klog.FromContext(ctx).Error(err, "validation failed")
@@ -55,6 +61,7 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 	klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("calling CSI driver", "baseSnapshotId", csiReq.BaseSnapshotId, "targetSnapshotId", csiReq.TargetSnapshotId)
 	csiStream, err := csi.NewSnapshotMetadataClient(s.csiConnection()).GetMetadataDelta(ctx, csiReq)
 	if err != nil {
+		klog.FromContext(ctx).Error(err, "csi.GetMetadataDelta")
 		return err
 	}
 
