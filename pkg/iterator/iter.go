@@ -296,7 +296,7 @@ func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDrive
 
 // createSecurityToken will create a security token for the specified storage
 // account using the audience string from the SnapshotMetadataService CR.
-func (iter *iterator) createSecurityToken(ctx context.Context, sa, saNamespace, audience string) (string, error) {
+func (iter *iterator) createSecurityToken(ctx context.Context, saNamespace, sa, audience string) (string, error) {
 	tokenRequest := authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
 			Audiences:         []string{audience},
