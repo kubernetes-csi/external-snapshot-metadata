@@ -24,6 +24,7 @@ import (
 	"os/signal"
 	"path/filepath"
 
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 
@@ -132,7 +133,7 @@ func main() {
 	parseFlags()
 
 	// get the K8s config from either kubeConfig, in-cluster or default
-	config, err := clientcmd.BuildConfigFromFlags("", kubeConfig)
+	config, err := buildConfig(kubeConfig)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error loading kubeconfig %s: %v\n", kubeConfig, err)
 		os.Exit(1)
@@ -155,4 +156,13 @@ func main() {
 	}
 
 	os.Exit(0)
+}
+
+func buildConfig(kubeconfigPath string) (*rest.Config, error) {
+	// If kubeconfig exists, try from kubeconfig file
+	if _, err := os.Stat(kubeconfigPath); err == nil {
+		return clientcmd.BuildConfigFromFlags("", kubeconfigPath)
+	}
+	// try in-cluster config
+	return rest.InClusterConfig()
 }
