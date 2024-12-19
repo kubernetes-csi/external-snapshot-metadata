@@ -271,7 +271,7 @@ func (th *testHarness) getSnapshotMetadataServiceCR(ctx context.Context, csiDriv
 	return th.RetGetSnapshotMetadataServiceCRService, th.RetGetSnapshotMetadataServiceCRErr
 }
 
-func (th *testHarness) createSecurityToken(ctx context.Context, saName, saNamespace, audience string) (string, error) {
+func (th *testHarness) createSecurityToken(ctx context.Context, saNamespace, saName, audience string) (string, error) {
 	th.InCreateSecurityTokenSAName = saName
 	th.InCreateSecurityTokenSANamespace = saNamespace
 	th.InCreateSecurityTokenAudience = audience
