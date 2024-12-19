@@ -258,7 +258,7 @@ func (th *testHarness) SnapshotMetadataIteratorDone(numberRecords int) {
 // fake helpers
 func (th *testHarness) getDefaultServiceAccount(ctx context.Context) (string, string, error) {
 	th.CalledGetDefaultServiceAccount = true
-	return th.RetGetDefaultSAName, th.RetGetDefaultSANamespace, th.RetGetDefaultServiceAccountErr
+	return th.RetGetDefaultSANamespace, th.RetGetDefaultSAName, th.RetGetDefaultServiceAccountErr
 }
 
 func (th *testHarness) getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error) {
@@ -271,7 +271,7 @@ func (th *testHarness) getSnapshotMetadataServiceCR(ctx context.Context, csiDriv
 	return th.RetGetSnapshotMetadataServiceCRService, th.RetGetSnapshotMetadataServiceCRErr
 }
 
-func (th *testHarness) createSecurityToken(ctx context.Context, saName, saNamespace, audience string) (string, error) {
+func (th *testHarness) createSecurityToken(ctx context.Context, saNamespace, saName, audience string) (string, error) {
 	th.InCreateSecurityTokenSAName = saName
 	th.InCreateSecurityTokenSANamespace = saNamespace
 	th.InCreateSecurityTokenAudience = audience

@@ -489,7 +489,7 @@ func TestCreateSecurityToken(t *testing.T) {
 		th := newTestHarness()
 		iter := th.NewTestIterator()
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.SAName, th.SANamespace, th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.SANamespace, th.SAName, th.Audience)
 		assert.Error(t, err)
 		assert.ErrorContains(t, err, "ServiceAccounts.CreateToken")
 		assert.Empty(t, securityToken)
@@ -503,7 +503,7 @@ func TestCreateSecurityToken(t *testing.T) {
 			return true, th.FakeTokenRequest(), nil
 		})
 
-		securityToken, err := iter.createSecurityToken(context.Background(), th.SAName, th.SANamespace, th.Audience)
+		securityToken, err := iter.createSecurityToken(context.Background(), th.SANamespace, th.SAName, th.Audience)
 		assert.NoError(t, err)
 		assert.Equal(t, th.SecurityToken, securityToken)
 	})
