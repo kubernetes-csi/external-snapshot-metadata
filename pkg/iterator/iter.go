@@ -167,7 +167,7 @@ type iterator struct {
 
 type iteratorHelpers interface {
 	getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error)
-	getDefaultServiceAccount(ctx context.Context) (string, string, error)
+	getDefaultServiceAccount(ctx context.Context) (saNamespace string, saName string, err error)
 	getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error)
 	createSecurityToken(ctx context.Context, saNamespace, saName, audience string) (string, error)
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
@@ -296,7 +296,7 @@ func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDrive
 
 // createSecurityToken will create a security token for the specified storage
 // account using the audience string from the SnapshotMetadataService CR.
-func (iter *iterator) createSecurityToken(ctx context.Context, sa, saNamespace, audience string) (string, error) {
+func (iter *iterator) createSecurityToken(ctx context.Context, saNamespace, sa, audience string) (string, error) {
 	tokenRequest := authv1.TokenRequest{
 		Spec: authv1.TokenRequestSpec{
 			Audiences:         []string{audience},
