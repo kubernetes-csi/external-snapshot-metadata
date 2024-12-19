@@ -17,11 +17,15 @@ limitations under the License.
 package sidecar
 
 import (
+	"context"
 	"flag"
 	"fmt"
+	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"strconv"
+	"sync"
 	"syscall"
 	"time"
 
@@ -29,6 +33,7 @@ import (
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/server/grpc"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/metrics"
 )
 
 const (
@@ -86,8 +91,18 @@ func Run(argv []string, version string) int {
 
 	klog.Infof("CSI driver name: %q", rt.DriverName)
 
-	// TBD May need to exposed metric HTTP end point
-	// here because the wait for the CSI driver is open ended.
+	rt.MetricsManager = metrics.NewMetricsManager()
+	wg := &sync.WaitGroup{}
+
+	mux := http.NewServeMux()
+	if *s.httpEndpoint != "" {
+		err := rt.MetricsManager.PrepareMetricsPath(mux, *s.metricsPath, promklog{})
+		if err != nil {
+			klog.Errorf("Failed to prepare metrics path: %s", err.Error())
+			os.Exit(1)
+		}
+		klog.Infof("Metrics path successfully registered at %s", *s.metricsPath)
+	}
 
 	grpcServer, err := startGRPCServerAndValidateCSIDriver(s.createServerConfig(rt))
 	if err != nil {
@@ -95,7 +110,29 @@ func Run(argv []string, version string) int {
 		return 1
 	}
 
-	// TODO: Start the HTTP metrics server here.
+	// start listening & serving http endpoint if set
+	if *s.httpEndpoint != "" {
+		l, err := net.Listen("tcp", *s.httpEndpoint)
+		if err != nil {
+			klog.Fatalf("failed to listen on address[%s], error[%v]", *s.httpEndpoint, err)
+		}
+		srv := &http.Server{Addr: l.Addr().String(), Handler: mux}
+		go func() {
+			defer wg.Done()
+			if err := srv.Serve(l); err != http.ErrServerClosed {
+				klog.Fatalf("failed to start endpoint at:%s/%s, error: %v", *s.httpEndpoint, *s.metricsPath, err)
+			}
+		}()
+		klog.Infof("Metrics http server successfully started on %s, %s", *s.httpEndpoint, *s.metricsPath)
+		defer func() {
+			err := srv.Shutdown(context.Background())
+			if err != nil {
+				klog.Errorf("Failed to shutdown metrics server: %s", err.Error())
+			}
+			klog.Infof("Metrics server successfully shutdown")
+			wg.Done()
+		}()
+	}
 
 	shutdownOnTerminationSignal(grpcServer)
 
@@ -172,7 +209,6 @@ func (s *sidecarFlagSet) parseFlagsAndHandleShowVersion(args []string) (handledS
 }
 
 func (s *sidecarFlagSet) runtimeArgsFromFlags() runtime.Args {
-	// TODO: set the HTTP server properties.
 	return runtime.Args{
 		CSIAddress:   *s.csiAddress,
 		CSITimeout:   *s.csiTimeout,
@@ -180,6 +216,8 @@ func (s *sidecarFlagSet) runtimeArgsFromFlags() runtime.Args {
 		KubeAPIQPS:   (float32)(*s.kubeAPIQPS),
 		Kubeconfig:   *s.kubeconfig,
 		GRPCPort:     *s.grpcPort,
+		HttpEndpoint: *s.httpEndpoint,
+		MetricsPath:  *s.metricsPath,
 		TLSCertFile:  *s.tlsCert,
 		TLSKeyFile:   *s.tlsKey,
 	}
@@ -220,6 +258,14 @@ func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []
 
 	if rta.KubeAPIQPS != defaultKubeAPIQPS {
 		argv = append(argv, "-"+flagKubeAPIQPS, strconv.FormatFloat(float64(rta.KubeAPIQPS), 'f', -1, 32))
+	}
+
+	if rta.HttpEndpoint != "" {
+		argv = append(argv, "-"+flagHTTPEndpoint, rta.HttpEndpoint)
+	}
+
+	if rta.MetricsPath != "" {
+		argv = append(argv, "-"+flagMetricsPath, rta.MetricsPath)
 	}
 
 	return argv
@@ -278,4 +324,10 @@ func shutdownOnTerminationSignal(grpcServer *grpc.Server) {
 	klog.Infof("Terminating on signal '%s' (%d)", sigReceived.String(), sigReceived)
 	grpcServer.Stop()
 	klog.Infof("Shutdown complete")
+}
+
+type promklog struct{}
+
+func (pl promklog) Println(v ...interface{}) {
+	klog.Error(v...)
 }
