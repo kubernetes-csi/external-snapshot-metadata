@@ -258,7 +258,7 @@ func (th *testHarness) SnapshotMetadataIteratorDone(numberRecords int) {
 // fake helpers
 func (th *testHarness) getDefaultServiceAccount(ctx context.Context) (string, string, error) {
 	th.CalledGetDefaultServiceAccount = true
-	return th.RetGetDefaultSAName, th.RetGetDefaultSANamespace, th.RetGetDefaultServiceAccountErr
+	return th.RetGetDefaultSANamespace, th.RetGetDefaultSAName, th.RetGetDefaultServiceAccountErr
 }
 
 func (th *testHarness) getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error) {

@@ -167,7 +167,7 @@ type iterator struct {
 
 type iteratorHelpers interface {
 	getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error)
-	getDefaultServiceAccount(ctx context.Context) (string, string, error)
+	getDefaultServiceAccount(ctx context.Context) (saNamespace string, saName string, err error)
 	getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error)
 	createSecurityToken(ctx context.Context, saNamespace, saName, audience string) (string, error)
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
