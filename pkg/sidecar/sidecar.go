@@ -32,26 +32,28 @@ import (
 )
 
 const (
-	defaultCSISocket    = "/run/csi/socket"
-	defaultCSITimeout   = time.Minute // Default timeout of short CSI calls like GetPluginInfo.
-	defaultGRPCPort     = 50051
-	defaultHTTPEndpoint = ""
-	defaultKubeAPIQPS   = 5.0
-	defaultKubeAPIBurst = 10
-	defaultKubeconfig   = ""
-	defaultMetricsPath  = "/metrics"
+	defaultCSISocket               = "/run/csi/socket"
+	defaultCSITimeout              = time.Minute // Default timeout of short CSI calls like GetPluginInfo.
+	defaultGRPCPort                = 50051
+	defaultHTTPEndpoint            = ""
+	defaultKubeAPIBurst            = 10
+	defaultKubeAPIQPS              = 5.0
+	defaultKubeconfig              = ""
+	defaultMaxStreamingDurationMin = 10
+	defaultMetricsPath             = "/metrics"
 
-	flagCSIAddress   = "csi-address"
-	flagCSITimeout   = "timeout"
-	flagGRPCPort     = "port"
-	flagHTTPEndpoint = "http-endpoint"
-	flagKubeAPIBurst = "kube-api-burst"
-	flagKubeAPIQPS   = "kube-api-qps"
-	flagKubeconfig   = "kubeconfig"
-	flagMetricsPath  = "metrics-path"
-	flagTLSCert      = "tls-cert"
-	flagTLSKey       = "tls-key"
-	flagVersion      = "version"
+	flagCSIAddress              = "csi-address"
+	flagCSITimeout              = "timeout"
+	flagGRPCPort                = "port"
+	flagHTTPEndpoint            = "http-endpoint"
+	flagKubeAPIBurst            = "kube-api-burst"
+	flagKubeAPIQPS              = "kube-api-qps"
+	flagKubeconfig              = "kubeconfig"
+	flagMaxStreamingDurationMin = "max-streaming-duration-min"
+	flagMetricsPath             = "metrics-path"
+	flagTLSCert                 = "tls-cert"
+	flagTLSKey                  = "tls-key"
+	flagVersion                 = "version"
 
 	// tlsCertEnvVar is an environment variable that specifies the path to tls certificate file.
 	tlsCertEnvVar = "TLS_CERT_PATH"
@@ -87,7 +89,7 @@ func Run(argv []string, version string) int {
 	// TBD May need to exposed metric HTTP end point
 	// here because the wait for the CSI driver is open ended.
 
-	grpcServer, err := startGRPCServerAndValidateCSIDriver(rt)
+	grpcServer, err := startGRPCServerAndValidateCSIDriver(s.createServerConfig(rt))
 	if err != nil {
 		klog.Error(err)
 		return 1
@@ -106,17 +108,18 @@ type sidecarFlagSet struct {
 	version string
 
 	// flag variables
-	csiAddress   *string
-	csiTimeout   *time.Duration
-	grpcPort     *int
-	httpEndpoint *string
-	kubeAPIBurst *int
-	kubeAPIQPS   *float64
-	kubeconfig   *string
-	metricsPath  *string
-	showVersion  *bool
-	tlsCert      *string
-	tlsKey       *string
+	csiAddress         *string
+	csiTimeout         *time.Duration
+	grpcPort           *int
+	httpEndpoint       *string
+	kubeAPIBurst       *int
+	kubeAPIQPS         *float64
+	kubeconfig         *string
+	maxStreamingDurMin *int
+	metricsPath        *string
+	showVersion        *bool
+	tlsCert            *string
+	tlsKey             *string
 }
 
 var sidecarFlagSetErrorHandling flag.ErrorHandling = flag.ExitOnError // UT interception point.
@@ -136,6 +139,8 @@ func newSidecarFlagSet(name, version string) *sidecarFlagSet {
 	s.grpcPort = s.Int(flagGRPCPort, defaultGRPCPort, "GRPC SnapshotMetadata service port number")
 	s.tlsCert = s.String(flagTLSCert, os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file. Can also be set with the environment variable "+tlsCertEnvVar+".")
 	s.tlsKey = s.String(flagTLSKey, os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file. Can also be set with the environment variable "+tlsKeyEnvVar+".")
+
+	s.maxStreamingDurMin = s.Int(flagMaxStreamingDurationMin, defaultMaxStreamingDurationMin, "The maximum duration in minutes for any individual streaming session")
 
 	s.kubeAPIQPS = s.Float64(flagKubeAPIQPS, defaultKubeAPIQPS, "QPS to use while communicating with the kubernetes apiserver. Defaults to 5.0.")
 	s.kubeAPIBurst = s.Int(flagKubeAPIBurst, defaultKubeAPIBurst, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
@@ -220,11 +225,20 @@ func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []
 	return argv
 }
 
+func (s *sidecarFlagSet) createServerConfig(rt *runtime.Runtime) grpc.ServerConfig {
+	return grpc.ServerConfig{
+		Runtime:      rt,
+		MaxStreamDur: time.Duration(*s.maxStreamingDurMin * 60),
+	}
+}
+
 // startGRPCServerAndValidateCSIDriver starts the GRPC server and waits
 // for it to validate the CSI driver capabilities.
-func startGRPCServerAndValidateCSIDriver(rt *runtime.Runtime) (*grpc.Server, error) {
+func startGRPCServerAndValidateCSIDriver(config grpc.ServerConfig) (*grpc.Server, error) {
+	rt := config.Runtime
+
 	// create the GRPC server.
-	grpcServer, err := grpc.NewServer(grpc.ServerConfig{Runtime: rt})
+	grpcServer, err := grpc.NewServer(config)
 	if err != nil {
 		klog.Errorf("Failed to start GRPC server: %v", err)
 		return nil, err

@@ -22,6 +22,7 @@ import (
 	"fmt"
 	"io"
 	"testing"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/golang/mock/gomock"
@@ -984,4 +985,83 @@ func (f *fakeStreamServerSnapshotDelta) Send(m *api.GetMetadataDeltaResponse) er
 
 func (f *fakeStreamServerSnapshotDelta) verifyResponse(expectedResponse *api.GetMetadataDeltaResponse) bool {
 	return f.response.String() == expectedResponse.String()
+}
+
+func TestGetMetadataDeltaClientErrorHandling(t *testing.T) {
+	t.Run("client-cancels-context", func(t *testing.T) {
+		sms, th := newSMSHarnessForCtxPropagation(t, 0)
+		defer sms.cleanup(t)
+
+		// create the cancelable application client context
+		ctx, cancelFn := context.WithCancel(context.Background())
+
+		// make the RPC call
+		client := th.GRPCSnapshotMetadataClient(t)
+		clientStream, err := client.GetMetadataDelta(ctx, &api.GetMetadataDeltaRequest{
+			SecurityToken:      th.SecurityToken,
+			Namespace:          th.Namespace,
+			BaseSnapshotName:   "snap-1",
+			TargetSnapshotName: "snap-2",
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, clientStream)
+
+		sms.synchronizeBeforeCancel()
+
+		r1, e1 := clientStream.Recv() // get the first response
+		assert.NoError(t, e1)
+		assert.NotNil(t, r1)
+
+		// the client cancels the context
+		cancelFn()
+
+		r2, e2 := clientStream.Recv() // fail because ctx is canceled
+		assert.Error(t, e2)
+		assert.ErrorContains(t, e2, context.Canceled.Error())
+		assert.Nil(t, r2)
+
+		sms.synchronizeAfterCancel()
+
+		// Check the fake driver handler status
+		sms.mux.Lock()
+		defer sms.mux.Unlock()
+		assert.True(t, sms.handlerCalled)
+		assert.NoError(t, sms.send1Err)
+		assert.ErrorIs(t, sms.streamCtxErr, context.Canceled)
+		assert.Error(t, sms.send2Err)
+		assert.ErrorContains(t, sms.send2Err, context.Canceled.Error())
+	})
+
+	t.Run("sidecar-deadline-exceeded", func(t *testing.T) {
+		// arrange for the sidecar to timeout quickly
+		sms, th := newSMSHarnessForCtxPropagation(t, time.Millisecond*10)
+		defer sms.cleanup(t)
+
+		// make the RPC call
+		client := th.GRPCSnapshotMetadataClient(t)
+		clientStream, err := client.GetMetadataDelta(context.Background(), &api.GetMetadataDeltaRequest{
+			SecurityToken:      th.SecurityToken,
+			Namespace:          th.Namespace,
+			BaseSnapshotName:   "snap-1",
+			TargetSnapshotName: "snap-2",
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, clientStream)
+
+		sms.synchronizeBeforeCancel()
+
+		// do not attempt to receive anything
+
+		sms.synchronizeAfterCancel()
+
+		// Check the fake driver handler status
+		sms.mux.Lock()
+		defer sms.mux.Unlock()
+		assert.True(t, sms.handlerCalled)
+		assert.NoError(t, sms.send1Err)
+		assert.Error(t, sms.send2Err)
+		// its a bit uncertain as to which context error we get in the handler
+		re := context.DeadlineExceeded.Error() + "|" + context.Canceled.Error()
+		assert.Regexp(t, re, sms.send2Err.Error())
+	})
 }

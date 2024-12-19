@@ -31,7 +31,11 @@ import (
 )
 
 func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
-	ctx := s.getMetadataDeltaContextWithLogger(req, stream)
+	// Create a timeout context so that failure in either sending to the client or
+	// receiving from the CSI driver will ultimately abort the handler session.
+	// The context could also get canceled by the client.
+	ctx, cancelFn := context.WithTimeout(s.getMetadataDeltaContextWithLogger(req, stream), s.config.MaxStreamDur)
+	defer cancelFn()
 
 	if err := s.validateGetMetadataDeltaRequest(req); err != nil {
 		klog.FromContext(ctx).Error(err, "validation failed")
@@ -55,6 +59,7 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 	klog.FromContext(ctx).V(HandlerTraceLogLevel).Info("calling CSI driver", "baseSnapshotId", csiReq.BaseSnapshotId, "targetSnapshotId", csiReq.TargetSnapshotId)
 	csiStream, err := csi.NewSnapshotMetadataClient(s.csiConnection()).GetMetadataDelta(ctx, csiReq)
 	if err != nil {
+		klog.FromContext(ctx).Error(err, "csi.GetMetadataDelta")
 		return err
 	}
 
