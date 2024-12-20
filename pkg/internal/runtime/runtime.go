@@ -24,7 +24,6 @@ import (
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"github.com/kubernetes-csi/csi-lib-utils/connection"
-	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	csirpc "github.com/kubernetes-csi/csi-lib-utils/rpc"
 	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
 	"google.golang.org/grpc"
@@ -33,6 +32,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/metrics"
 )
 
 type Args struct {
@@ -48,6 +48,11 @@ type Args struct {
 	Kubeconfig string
 	// GRPC port number
 	GRPCPort int
+	// Endpoint for the HTTP server for diagnostics,
+	// metrics and leader election health check, will listen.
+	HttpEndpoint string
+	// Path where prometheus metrics will be exposed
+	MetricsPath string
 	// Absolute path to the TLS cert file.
 	TLSCertFile string
 	// Absolute path to the TLS key file.
@@ -94,7 +99,7 @@ type Runtime struct {
 	CBTClient      cbt.Interface
 	SnapshotClient snapshot.Interface
 	CSIConn        *grpc.ClientConn
-	MetricsManager metrics.CSIMetricsManager
+	MetricsManager metrics.MetricsManager
 	DriverName     string
 }
 
@@ -169,18 +174,17 @@ func (rt *Runtime) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBur
 func (rt *Runtime) csiConnect(csiAddress string) error {
 	ctx := context.Background()
 
-	metricsManager := metrics.NewCSIMetricsManagerForSidecar("" /* driverName */)
 	csiConn, err := connection.Connect(
 		ctx,
 		csiAddress,
-		metricsManager,
+		nil,
 		connection.OnConnectionLoss(connection.ExitOnConnectionLoss()))
 	if err != nil {
 		return fmt.Errorf("error connecting to CSI driver: %w", err)
 	}
 
 	rt.CSIConn = csiConn
-	rt.MetricsManager = metricsManager
+	rt.MetricsManager = metrics.NewMetricsManager()
 
 	return nil
 }
