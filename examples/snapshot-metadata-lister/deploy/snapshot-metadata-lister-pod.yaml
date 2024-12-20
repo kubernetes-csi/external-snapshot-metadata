@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: csi-client
+spec:
+  serviceAccountName: csi-client-sa
+  initContainers:
+  - name: install-client
+    image: golang:1.23.4
+    command:
+    - /bin/sh
+    - -c
+    - |
+      go install github.com/kubernetes-csi/external-snapshot-metadata/examples/snapshot-metadata-lister@latest
+      cp $(go env GOPATH)/bin/snapshot-metadata-lister /output
+    volumeMounts:
+    - name: shared-volume
+      mountPath: /output
+  containers:
+  - name: run-client
+    image: busybox:1.37.0
+    command:
+    - /bin/sh
+    - -c
+    - "tail -f /dev/null"
+    volumeMounts:
+    - name: shared-volume
+      mountPath: /tools
+  volumes:
+  - name: shared-volume
+    emptyDir: {}
