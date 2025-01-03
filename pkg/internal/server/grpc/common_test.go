@@ -27,6 +27,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	"github.com/kubernetes-csi/csi-lib-utils/metrics"
 	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	fakesnapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
 	snapshotutils "github.com/kubernetes-csi/external-snapshotter/v8/pkg/utils"
@@ -112,6 +113,7 @@ func (th *testHarness) Runtime() *runtime.Runtime {
 		SnapshotClient: th.FakeSnapshotClient,
 		DriverName:     th.DriverName,
 		CSIConn:        th.mockCSIDriverConn,
+		MetricsManager: metrics.NewCSIMetricsManagerWithOptions(th.DriverName, metrics.WithSubsystem(runtime.SubSystem), metrics.WithLabelNames(runtime.LabelTargetSnapshotName, runtime.LabelBaseSnapshotName)),
 	}
 }
 

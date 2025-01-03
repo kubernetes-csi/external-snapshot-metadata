@@ -151,6 +151,31 @@ func TestGetMetadataAllocatedViaGRPCClient(t *testing.T) {
 			} else if errStream != nil {
 				assert.ErrorIs(t, errStream, io.EOF)
 			}
+
+			// Validate metrics are recorded correctly
+			metrics, _ := grpcServer.config.Runtime.MetricsManager.GetRegistry().Gather()
+			statusFound := 0
+			snapshotFound := 0
+
+			// Validate that both gauge and controller metrics is recorded
+			assert.GreaterOrEqual(t, 2, len(metrics))
+			assert.Equal(t, *metrics[0].Name, "process_start_time_seconds")
+			assert.Equal(t, *metrics[1].Name, "snapshot_metadata_controller_operations_seconds")
+
+			// Validate grpc_status_code and target_snapshot name
+			for _, metric := range metrics[1].Metric {
+				for _, labels := range metric.Label {
+					expTargetSnapshotName := fmt.Sprintf("%s/%s", tc.req.Namespace, tc.req.SnapshotName)
+					if *labels.Name == "grpc_status_code" && *labels.Value == tc.expStatusCode.String() {
+						statusFound = 1
+					}
+					if *labels.Name == "target_snapshot" && *labels.Value == expTargetSnapshotName {
+						snapshotFound = 1
+					}
+				}
+			}
+			assert.Equal(t, 1, statusFound)
+			assert.Equal(t, 1, snapshotFound)
 		})
 	}
 }

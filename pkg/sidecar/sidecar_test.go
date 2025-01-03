@@ -21,8 +21,10 @@ import (
 	"fmt"
 	"io"
 	"math/rand/v2"
+	"net/http"
 	"os"
 	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"testing"
@@ -110,6 +112,45 @@ func TestSidecarFlagSet(t *testing.T) {
 			GRPCPort:     defaultGRPCPort,
 			TLSCertFile:  expTLSCertFile,
 			TLSKeyFile:   expTLSKeyFile,
+			MetricsPath:  defaultMetricsPath,
+		}
+
+		assert.Equal(t, expRTA, rta)
+
+		rt := &runtime.Runtime{}
+		config := sfs.createServerConfig(rt)
+		assert.Equal(t, rt, config.Runtime)
+		assert.Equal(t, time.Duration(defaultMaxStreamingDurationMin)*time.Minute, config.MaxStreamDur)
+	})
+
+	t.Run("http-endpoint-and-metrics-flag", func(t *testing.T) {
+		defer saveAndResetGlobalState()()
+
+		expTLSCertFile := "/tls/certFile"
+		t.Setenv(tlsCertEnvVar, expTLSCertFile)
+		expTLSKeyFile := "/tls/keyFile"
+		t.Setenv(tlsKeyEnvVar, expTLSKeyFile)
+
+		argv := []string{"progName", "-http-endpoint=localhost:8080", "-metrics-path=/metPath"}
+		sfs := newSidecarFlagSet(argv[0], "version")
+
+		hsv, err := sfs.parseFlagsAndHandleShowVersion(argv[1:])
+		assert.NoError(t, err)
+		assert.False(t, hsv)
+
+		rta := sfs.runtimeArgsFromFlags()
+
+		expRTA := runtime.Args{
+			CSIAddress:   defaultCSISocket,
+			CSITimeout:   defaultCSITimeout,
+			KubeAPIBurst: defaultKubeAPIBurst,
+			KubeAPIQPS:   defaultKubeAPIQPS,
+			Kubeconfig:   defaultKubeconfig,
+			GRPCPort:     defaultGRPCPort,
+			TLSCertFile:  expTLSCertFile,
+			TLSKeyFile:   expTLSKeyFile,
+			HttpEndpoint: "localhost:8080",
+			MetricsPath:  "/metPath",
 		}
 
 		assert.Equal(t, expRTA, rta)
@@ -212,6 +253,71 @@ func TestRun(t *testing.T) {
 		go func() {
 			close(startedChan)
 			rc = Run(argv, "version")
+			wg.Done()
+		}()
+
+		<-startedChan
+
+		// Send a termination signal to the server after a brief delay.
+		// As there are multiple possible termination signals we randomly
+		// select one each invocation.
+		go func() {
+			time.Sleep(time.Millisecond * 100)
+			termSigIdx := rand.IntN(len(terminationSignals))
+			proc.Signal(terminationSignals[termSigIdx])
+		}()
+
+		wg.Wait()
+
+		assert.Equal(t, 0, rc)
+	})
+
+	t.Run("launch-and-terminate-with-http-server", func(t *testing.T) {
+		proc, err := os.FindProcess(syscall.Getpid())
+		assert.NoError(t, err)
+
+		// Specifying a fake snapshot metadata server to WithFakeCSIDriver()
+		// makes the fake identity server advertise the needed capabilities.
+		sms := &testSnapshotMetadataServer{}
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t).WithFakeKubeConfig(t).WithFakeCSIDriver(t, sms)
+		defer rth.RemoveTestTLSFiles(t)
+		defer rth.RemoveFakeKubeConfig(t)
+		defer rth.TerminateFakeCSIDriver(t)
+
+		// Still need to add a response to the fake identity server Probe.
+		rth.FakeProbeResponse = &csi.ProbeResponse{Ready: wrapperspb.Bool(true)}
+
+		rt := rth.RuntimeForFakeCSIDriver(t)
+		rt.Args.HttpEndpoint = "localhost:8082"
+		rt.Args.MetricsPath = defaultMetricsPath
+
+		sfs := &sidecarFlagSet{}
+		argv := sfs.runtimeArgsToArgv("progName", rt.Args)
+		argv = append(argv, flagMaxStreamingDurationMin, fmt.Sprintf("%d", defaultMaxStreamingDurationMin+1))
+
+		// invoke Run() in a goroutine so as not to block.
+		wg := sync.WaitGroup{}
+		wg.Add(1)
+		startedChan := make(chan int)
+
+		rc := -1 // this will track the return value of Run().
+
+		go func() {
+			close(startedChan)
+			rc = Run(argv, "version")
+			srvAddr := "http://" + rt.Args.HttpEndpoint + rt.Args.MetricsPath
+			rsp, err := http.Get(srvAddr)
+			if err != nil || rsp.StatusCode != http.StatusOK {
+				t.Errorf("failed to get response from server %v, %v", err, rsp)
+			}
+			r, err := io.ReadAll(rsp.Body)
+			if err != nil {
+				t.Errorf("failed to read response body %v", err)
+			}
+			// Validate that the metrics contains "snapshot_metadata_controller_operations_seconds" type histogram
+			if !strings.Contains(string(r), "snapshot_metadata_controller_operations_seconds") {
+				t.Errorf("didn't find expected type in metrics[%s]", string(r))
+			}
 			wg.Done()
 		}()
 

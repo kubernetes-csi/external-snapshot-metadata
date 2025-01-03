@@ -52,6 +52,10 @@ type Args struct {
 	TLSCertFile string
 	// Absolute path to the TLS key file.
 	TLSKeyFile string
+	// HttpEndpoint is the address of the metrics sever
+	HttpEndpoint string
+	// MetricsPath is the path where metrics will be recorded
+	MetricsPath string
 }
 
 func (args *Args) Validate() error {
@@ -169,7 +173,9 @@ func (rt *Runtime) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBur
 func (rt *Runtime) csiConnect(csiAddress string) error {
 	ctx := context.Background()
 
-	metricsManager := metrics.NewCSIMetricsManagerForSidecar("" /* driverName */)
+	metricsManager := metrics.NewCSIMetricsManagerWithOptions("",
+		metrics.WithSubsystem(SubSystem),
+		metrics.WithLabelNames(LabelTargetSnapshotName, LabelBaseSnapshotName))
 	csiConn, err := connection.Connect(
 		ctx,
 		csiAddress,
