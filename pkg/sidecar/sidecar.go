@@ -228,7 +228,7 @@ func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []
 func (s *sidecarFlagSet) createServerConfig(rt *runtime.Runtime) grpc.ServerConfig {
 	return grpc.ServerConfig{
 		Runtime:      rt,
-		MaxStreamDur: time.Duration(*s.maxStreamingDurMin * 60),
+		MaxStreamDur: time.Duration(*s.maxStreamingDurMin) * time.Minute,
 	}
 }
 

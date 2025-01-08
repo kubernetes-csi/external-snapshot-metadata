@@ -117,7 +117,7 @@ func TestSidecarFlagSet(t *testing.T) {
 		rt := &runtime.Runtime{}
 		config := sfs.createServerConfig(rt)
 		assert.Equal(t, rt, config.Runtime)
-		assert.Equal(t, time.Duration(defaultMaxStreamingDurationMin*60), config.MaxStreamDur)
+		assert.Equal(t, time.Duration(defaultMaxStreamingDurationMin)*time.Minute, config.MaxStreamDur)
 	})
 }
 
