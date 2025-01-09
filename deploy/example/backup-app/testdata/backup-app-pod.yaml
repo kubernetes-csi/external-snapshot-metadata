@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: backup-app-client
+  namespace: backup-app-namespace
+spec:
+  serviceAccountName: backup-app-service-account
+  containers:
+  - name: run-client
+    image: busybox:1.37.0
+    command:
+    - /bin/sh
+    - -c
+    - "tail -f /dev/null"

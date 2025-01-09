@@ -1,0 +1,118 @@
+---
+name: Intergration test
+
+on:
+  pull_request
+
+jobs:
+  minikube-ci:
+    name: Intergration test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
+
+      - name: Start minikube
+        uses: medyagh/setup-minikube@latest
+
+      - name: Install Dependencies
+        run: |
+          # Install yq
+          wget https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -O /usr/bin/yq && chmod +x /usr/bin/yq
+          yq --version
+
+      - name: Build csi-snapshot-metadata container image
+        run: |
+          # make build-csi-snapshot-metadata
+          # minikube image build -f ./cmd/csi-snapshot-metadata/Dockerfile -t gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:test .
+
+      - name: Deploy snapshot-controller
+        run: |
+          ./scripts/deploy-snapshot-controller.sh deploy
+
+      - name: Deploy csi-hostpath-driver
+        run: |
+          kubectl apply -f ./client/config/crd/cbt.storage.k8s.io_snapshotmetadataservices.yaml
+
+          git clone https://github.com/rakshith-r/csi-driver-host-path.git ~/csi-driver-host-path
+
+          CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="false" CSI_SNAPSHOT_METADATA_TAG="main" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
+
+          kubectl apply -f ./deploy/example/csi-driver/testdata/
+
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=csi-hostpath-socat --timeout=300s
+
+      - name: Deploy backup client app
+        run: |
+          kubectl create ns backup-app-namespace
+          kubectl create -f deploy/snapshot-metadata-client-cluster-role.yaml
+          kubectl create -f deploy/example/backup-app/service-account.yaml
+          kubectl create -f deploy/example/backup-app/cluster-role-binding.yaml
+          kubectl create -f deploy/example/backup-app/testdata/backup-app-pod.yaml
+
+          kubectl wait  --for=condition=Ready -n backup-app-namespace pod/backup-app-client --timeout=300s
+
+          go build -o snapshot-metadata-lister ./examples/snapshot-metadata-lister/main.go
+
+          kubectl cp snapshot-metadata-lister backup-app-namespace/backup-app-client:/snapshot-metadata-lister
+
+          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -h
+
+      - name: Execute tests
+        run: |
+          kubectl create -f ~/csi-driver-host-path/examples/csi-storageclass.yaml
+          yq -i '.spec.resources.requests.storage = "1Mi"' ~/csi-driver-host-path/examples/csi-pvc-block.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-pvc-block.yaml
+
+          # Failed to pull image "gcr.io/google_containers/busybox":
+          # [DEPRECATION NOTICE] Docker Image Format v1 and Docker Image manifest version 2,
+          # schema 1 support is disabled by default and will be removed in an upcoming release.
+          # Suggest the author of gcr.io/google_containers/busybox:latest to upgrade the image to the OCI Format or Docker Image manifest v2, schema 2.
+          # More information at https://docs.docker.com/go/deprecated-image-specs/
+          yq -i '.spec.containers[0].image = "busybox:latest"' ~/csi-driver-host-path/examples/csi-pod-block.yaml
+          yq -i '.spec.containers[0].volumeDevices[0].devicePath = "/dev/block"' ~/csi-driver-host-path/examples/csi-pod-block.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-pod-block.yaml
+          kubectl wait --for=condition=Ready pod/pod-raw --timeout=300s
+
+          # write data into pod
+          kubectl exec -i pod-raw -- sh -c "dd if=/dev/urandom of=/dev/block bs=4K count=1 oflag=direct"
+
+          # take snaphot snap-1
+          yq -i '.metadata.name = "snap-1"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          yq -i '.spec.source.persistentVolumeClaimName = "pvc-raw"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl wait volumesnapshot  snap-1 --for=jsonpath='{.status.readyToUse}'=true --timeout=300s
+
+          # call external-snapshot-metadata-client
+          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default
+
+          # write data into pod
+          kubectl exec -i pod-raw -- sh -c "dd if=/dev/urandom of=/dev/block bs=4K count=5  oflag=direct"
+
+          # take snapshot snap-2
+          yq -i '.metadata.name = "snap-2"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          yq -i '.spec.source.persistentVolumeClaimName = "pvc-raw"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
+          kubectl wait volumesnapshot snap-2 --for=jsonpath='{.status.readyToUse}'=true --timeout=300s
+
+          # call external-snapshot-metadata-client
+          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default
+
+      - name: Log the status of the failed driver pod
+        if: ${{ failure() }}
+        run: |
+          kubectl get all -A
+
+          kubectl get po -A --show-labels
+
+          kubectl describe pod -n kube-system -l app.kubernetes.io/name=csi-hostpath-socat
+
+          kubectl logs -n kube-system  -l app.kubernetes.io/name=csi-hostpath-socat
+
+          kubectl describe pod -n backup-app-namespace backup-app-client
+
+          kubectl logs -n backup-app-namespace backup-app-client
+
+      - name: Setup tmate session to debug
+        if: ${{ failure() }}
+        uses: mxschmitt/action-tmate@v3
