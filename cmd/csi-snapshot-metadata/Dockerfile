@@ -1,5 +1,5 @@
 FROM alpine AS builder
-ARG GRPC_HEALTH_PROBE_VERSION=v0.4.36
+ARG GRPC_HEALTH_PROBE_VERSION=v0.4.37
 ADD https://github.com/grpc-ecosystem/grpc-health-probe/releases/download/${GRPC_HEALTH_PROBE_VERSION}/grpc_health_probe-linux-amd64 /bin/grpc_health_probe
 RUN chmod +x /bin/grpc_health_probe
 
