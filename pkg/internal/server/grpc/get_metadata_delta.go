@@ -21,6 +21,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
 	"google.golang.org/grpc/codes"
@@ -28,14 +29,24 @@ import (
 	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
 )
 
-func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) error {
+func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) (err error) {
 	// Create a timeout context so that failure in either sending to the client or
 	// receiving from the CSI driver will ultimately abort the handler session.
 	// The context could also get canceled by the client.
 	ctx, cancelFn := context.WithTimeout(s.getMetadataDeltaContextWithLogger(req, stream), s.config.MaxStreamDur)
 	defer cancelFn()
+
+	// Record metrics when the operation ends
+	defer func(startTime time.Time) {
+		opLabel := map[string]string{
+			runtime.LabelTargetSnapshotName: fmt.Sprintf("%s/%s", req.Namespace, req.TargetSnapshotName),
+			runtime.LabelBaseSnapshotName:   fmt.Sprintf("%s/%s", req.Namespace, req.BaseSnapshotName),
+		}
+		s.config.Runtime.RecordMetricsWithLabels(opLabel, runtime.MetadataAllocatedOperationName, startTime, err)
+	}(time.Now())
 
 	if err := s.validateGetMetadataDeltaRequest(req); err != nil {
 		klog.FromContext(ctx).Error(err, "validation failed")
@@ -63,7 +74,8 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 		return err
 	}
 
-	return s.streamGetMetadataDeltaResponse(ctx, stream, csiStream)
+	err = s.streamGetMetadataDeltaResponse(ctx, stream, csiStream)
+	return err
 }
 
 func (s *Server) getMetadataDeltaContextWithLogger(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) context.Context {
