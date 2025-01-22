@@ -125,7 +125,7 @@ func (rt *Runtime) initialize() error {
 	return nil
 }
 
-// kubeConnect creates the client config and creates the Kubernets client.
+// kubeConnect creates the client config and creates the Kubernetes client.
 // It uses the specified kubeconfig if not empty, otherwise assumes an in-cluster invocation.
 func (rt *Runtime) kubeConnect(kubeconfig string, kubeAPIQPS float32, kubeAPIBurst int) error {
 	var (
