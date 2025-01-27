@@ -34,7 +34,7 @@ jobs:
         run: |
           kubectl apply -f ./client/config/crd/cbt.storage.k8s.io_snapshotmetadataservices.yaml
 
-          git clone https://github.com/rakshith-r/csi-driver-host-path.git ~/csi-driver-host-path
+          git clone https://github.com/kubernetes-csi/csi-driver-host-path.git ~/csi-driver-host-path
 
           CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="false" CSI_SNAPSHOT_METADATA_TAG="main" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
 
