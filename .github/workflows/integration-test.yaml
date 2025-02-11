@@ -42,28 +42,25 @@ jobs:
 
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=csi-hostpath-socat --timeout=300s
 
-      - name: Deploy backup client app
+      - name: Deploy backup client app resources
         run: |
-          kubectl create ns backup-app-namespace
           kubectl create -f deploy/snapshot-metadata-client-cluster-role.yaml
-          kubectl create -f deploy/example/backup-app/service-account.yaml
-          kubectl create -f deploy/example/backup-app/cluster-role-binding.yaml
-          kubectl create -f deploy/example/backup-app/testdata/backup-app-pod.yaml
-
-          kubectl wait  --for=condition=Ready -n backup-app-namespace pod/backup-app-client --timeout=300s
+          kubectl create serviceaccount backup-app-service-account
+          kubectl create clusterrolebinding csi-client-cluster-role-binding --clusterrole=external-snapshot-metadata-client-runner --serviceaccount=default:backup-app-service-account
 
           go build -o snapshot-metadata-lister ./examples/snapshot-metadata-lister/main.go
+          go build -o snapshot-metadata-verifier ./examples/snapshot-metadata-verifier/main.go
 
-          kubectl cp snapshot-metadata-lister backup-app-namespace/backup-app-client:/snapshot-metadata-lister
-
-          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -h
+          ./snapshot-metadata-lister -h
 
       - name: Execute tests
         run: |
+          echo "Create a raw block PVC"
           kubectl create -f ~/csi-driver-host-path/examples/csi-storageclass.yaml
           yq -i '.spec.resources.requests.storage = "1Mi"' ~/csi-driver-host-path/examples/csi-pvc-block.yaml
           kubectl create -f ~/csi-driver-host-path/examples/csi-pvc-block.yaml
 
+          echo "Create a pod consuming raw block PVC"
           # Failed to pull image "gcr.io/google_containers/busybox":
           # [DEPRECATION NOTICE] Docker Image Format v1 and Docker Image manifest version 2,
           # schema 1 support is disabled by default and will be removed in an upcoming release.
@@ -74,29 +71,104 @@ jobs:
           kubectl create -f ~/csi-driver-host-path/examples/csi-pod-block.yaml
           kubectl wait --for=condition=Ready pod/pod-raw --timeout=300s
 
-          # write data into pod
+          echo "Write data into pod"
           kubectl exec -i pod-raw -- sh -c "dd if=/dev/urandom of=/dev/block bs=4K count=1 oflag=direct"
 
-          # take snaphot snap-1
+          echo "Take snaphot snap-1"
           yq -i '.metadata.name = "snap-1"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
           yq -i '.spec.source.persistentVolumeClaimName = "pvc-raw"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
           kubectl create -f ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
           kubectl wait volumesnapshot  snap-1 --for=jsonpath='{.status.readyToUse}'=true --timeout=300s
+          
+          echo "Restore snapshot into source-device PVC"
+          yq -i '.metadata.name = "source-device"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          yq -i '.spec.dataSource.name = "snap-1"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          yq -i '.spec.resources.requests.storage = "1Mi"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          
+          echo "Create fresh target-device PVC"
+          yq -i '.metadata.name = "target-device"' ~/csi-driver-host-path/examples/csi-pvc-block.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-pvc-block.yaml
+          
+          echo "Create backup-app-client pod which mounts source-device and target-device PVCs"
+          kubectl create -f deploy/example/backup-app/testdata/backup-app-pod.yaml
+          kubectl wait  --for=condition=Ready pod/backup-app-client --timeout=300s
 
-          # call external-snapshot-metadata-client
-          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default
+          echo "Copy snapshot-metadata-lister into backup-app-client pod"
+          kubectl cp ./snapshot-metadata-lister default/backup-app-client:/snapshot-metadata-lister -c run-client
+          kubectl cp ./snapshot-metadata-verifier default/backup-app-client:/snapshot-metadata-verifier -c run-client
+          
+          echo "Execute external-snapshot-metadata-client to list allocated blocks in snap-1"
+          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig=""
 
-          # write data into pod
-          kubectl exec -i pod-raw -- sh -c "dd if=/dev/urandom of=/dev/block bs=4K count=5  oflag=direct"
+          echo "Execute external-snapshot-metadata-client to list allocated blocks and verify the data allocated in snap-1"
+          kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target
 
-          # take snapshot snap-2
+          # TODO: uncomment the following two blocks after the pr https://github.com/kubernetes-csi/csi-driver-host-path/pull/579 is merged.
+          # echo "Write more data into source-device to test negative case"
+          # kubectl exec -i backup-app-client -- sh -c "dd if=/dev/urandom of=/dev/source bs=4K count=6 oflag=direct"
+          
+          # echo "Execute external-snapshot-metadata-client to expect a failure"
+          # export failed=0
+          # kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target && { echo "Command was expected to fail"; exit 1;}
+          # if [ $failed -ne 1 ]; then
+          #   echo "Command was expected to fail"
+          #   exit 1
+          # else
+          #   echo "Command failed as expected"
+          # fi
+
+          echo "Delete backup-app-client pod and source-device and target-device PVCs"
+          kubectl delete -f deploy/example/backup-app/testdata/backup-app-pod.yaml
+          kubectl delete pvc source-device target-device
+          
+          echo "Write data into pod again"
+          kubectl exec -i pod-raw -- sh -c "dd if=/dev/urandom of=/dev/block bs=4K count=5 oflag=direct"
+
+          echo "Take snapshot snap-2"
           yq -i '.metadata.name = "snap-2"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
           yq -i '.spec.source.persistentVolumeClaimName = "pvc-raw"' ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
           kubectl create -f ~/csi-driver-host-path/examples/csi-snapshot-v1.yaml
           kubectl wait volumesnapshot snap-2 --for=jsonpath='{.status.readyToUse}'=true --timeout=300s
 
-          # call external-snapshot-metadata-client
-          kubectl exec -n backup-app-namespace backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default
+          echo "Restore snap-1 into target-device"
+          yq -i '.metadata.name = "target-device"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          yq -i '.spec.dataSource.name = "snap-1"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          yq -i '.spec.resources.requests.storage = "1Mi"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+
+          echo "Restore snap-2 into source-device"
+          yq -i '.metadata.name = "source-device"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          yq -i '.spec.dataSource.name = "snap-2"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          yq -i '.spec.resources.requests.storage = "1Mi"' ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          kubectl create -f ~/csi-driver-host-path/examples/csi-block-pvc-restore.yaml
+          
+          echo "Create backup-app-client pod which mounts source-device and target-device PVCs"
+          kubectl create -f deploy/example/backup-app/testdata/backup-app-pod.yaml
+          kubectl wait  --for=condition=Ready pod/backup-app-client --timeout=300s
+
+          echo "Copy snapshot-metadata-lister into backup-app-client pod"
+          kubectl cp ./snapshot-metadata-lister default/backup-app-client:/snapshot-metadata-lister -c run-client
+          kubectl cp ./snapshot-metadata-verifier default/backup-app-client:/snapshot-metadata-verifier -c run-client
+
+          echo "Execute external-snapshot-metadata-client to list changed blocks between snap-1 and snap-2"
+          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig=""
+
+          echo "Execute external-snapshot-metadata-client to verify the data between snap-1 and snap-2"
+          kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target
+
+          echo "Write more data into source-device to test negative case"
+          kubectl exec -i backup-app-client -- sh -c "dd if=/dev/urandom of=/dev/source bs=4K count=6 oflag=direct"
+          
+          echo "Execute external-snapshot-metadata-client to expect a failure"
+          export failed=0
+          kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target || { export failed=1; true;}
+          if [ $failed -ne 1 ]; then
+            echo "Command was expected to fail but it succeeded"
+            exit 1
+          else
+            echo "Command failed as expected"
+          fi
 
       - name: Log the status of the failed driver pod
         if: ${{ failure() }}
@@ -109,9 +181,9 @@ jobs:
 
           kubectl logs -n kube-system  -l app.kubernetes.io/name=csi-hostpath-socat
 
-          kubectl describe pod -n backup-app-namespace backup-app-client
+          kubectl describe pod backup-app-client
 
-          kubectl logs -n backup-app-namespace backup-app-client
+          kubectl logs backup-app-client
 
       - name: Setup tmate session to debug
         if: ${{ failure() }}

@@ -148,14 +148,11 @@ type IteratorMetadata struct {
 type IteratorEmitter interface {
 	// SnapshotMetadataIteratorRecord is invoked for each record received
 	// from the gRPC stream.
-	// The operation should return true to continue or false to stop
-	// enumerating the records. If false was returned then the iterator
-	// will terminate with an ErrCancelled error.
-	SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) bool
+	SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) error
 
 	// SnapshotMetadataIteratorDone is called prior to termination as long as
 	// no error was encountered.
-	SnapshotMetadataIteratorDone(numberRecords int)
+	SnapshotMetadataIteratorDone(numberRecords int) error
 }
 
 type iterator struct {
@@ -241,11 +238,11 @@ func (iter *iterator) run(ctx context.Context) error {
 		err = iter.h.getChangedBlocks(ctx, apiClient, securityToken)
 	}
 
-	if err == nil {
-		iter.Emitter.SnapshotMetadataIteratorDone(iter.recordNum)
+	if err != nil {
+		return err
 	}
 
-	return err
+	return iter.Emitter.SnapshotMetadataIteratorDone(iter.recordNum)
 }
 
 func (iter *iterator) getDefaultServiceAccount(ctx context.Context) (namespace string, name string, err error) {
@@ -353,12 +350,13 @@ func (iter *iterator) getAllocatedBlocks(ctx context.Context, grpcClient api.Sna
 
 		iter.recordNum++
 
-		if !iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
+		err = iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
 			BlockMetadataType:   resp.BlockMetadataType,
 			VolumeCapacityBytes: resp.VolumeCapacityBytes,
 			BlockMetadata:       resp.BlockMetadata,
-		}) {
-			return ErrCancelled
+		})
+		if err != nil {
+			return err
 		}
 	}
 }
@@ -388,12 +386,13 @@ func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.Snaps
 
 		iter.recordNum++
 
-		if !iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
+		err = iter.Emitter.SnapshotMetadataIteratorRecord(iter.recordNum, IteratorMetadata{
 			BlockMetadataType:   resp.BlockMetadataType,
 			VolumeCapacityBytes: resp.VolumeCapacityBytes,
 			BlockMetadata:       resp.BlockMetadata,
-		}) {
-			return ErrCancelled
+		})
+		if err != nil {
+			return err
 		}
 	}
 }
