@@ -4,7 +4,8 @@ on:
   push:
     branches:
       - main
-  pull_request:
+  # TODO: revert once https://github.com/kubernetes-csi/external-snapshot-metadata/issues/119 is fixed
+  # pull_request:
 jobs:
   build:
     name: Build
