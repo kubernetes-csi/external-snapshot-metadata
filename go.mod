@@ -1,6 +1,6 @@
 module github.com/kubernetes-csi/external-snapshot-metadata
 
-go 1.23.1
+go 1.23.6
 
 require (
 	github.com/container-storage-interface/spec v1.11.0
