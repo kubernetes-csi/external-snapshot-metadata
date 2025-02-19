@@ -617,7 +617,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-EOF", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -642,7 +642,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-Err", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -668,7 +668,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-ABORT", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -678,7 +678,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient(mockController)
 
 		mockStream.EXPECT().Recv().Return(responses[0], nil) // one record only
-		th.RetSnapshotMetadataIteratorRecord = false         // then abort
+		th.RetSnapshotMetadataIteratorRecord = ErrCancelled  // then abort
 
 		expReq := th.FakeGetMetadataAllocatedRequest()
 		mockClient.EXPECT().GetMetadataAllocated(gomock.Any(), expReq).Return(mockStream, nil)
@@ -759,7 +759,7 @@ func TestGetChangedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-EOF", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -784,7 +784,7 @@ func TestGetChangedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-rec-Err", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -810,7 +810,7 @@ func TestGetChangedBlocks(t *testing.T) {
 
 	t.Run("stream-rec-ABORT", func(t *testing.T) {
 		th := newTestHarness()
-		th.RetSnapshotMetadataIteratorRecord = true
+		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
 
 		mockController := gomock.NewController(t)
@@ -820,7 +820,7 @@ func TestGetChangedBlocks(t *testing.T) {
 		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient(mockController)
 
 		mockStream.EXPECT().Recv().Return(responses[0], nil) // one record only
-		th.RetSnapshotMetadataIteratorRecord = false         // then abort
+		th.RetSnapshotMetadataIteratorRecord = ErrCancelled  // then abort
 
 		expReq := th.FakeGetMetadataDeltaRequest()
 		mockClient.EXPECT().GetMetadataDelta(gomock.Any(), expReq).Return(mockStream, nil)

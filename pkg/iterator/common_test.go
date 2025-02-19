@@ -57,7 +57,7 @@ type testHarness struct {
 	// fake emitter
 	InSnapshotMetadataIteratorRecordNum  int
 	InSnapshotMetadataIteratorRecordMeta []IteratorMetadata
-	RetSnapshotMetadataIteratorRecord    bool
+	RetSnapshotMetadataIteratorRecord    error
 
 	InSnapshotMetadataIteratorDoneNR int
 
@@ -244,15 +244,17 @@ func (th *testHarness) GRPCSnapshotMetadataClient(t *testing.T) api.SnapshotMeta
 }
 
 // fake emitter
-func (th *testHarness) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) bool {
+func (th *testHarness) SnapshotMetadataIteratorRecord(recordNumber int, metadata IteratorMetadata) error {
 	th.InSnapshotMetadataIteratorRecordMeta = append(th.InSnapshotMetadataIteratorRecordMeta, metadata)
 	th.InSnapshotMetadataIteratorRecordNum = recordNumber
 
 	return th.RetSnapshotMetadataIteratorRecord
 }
 
-func (th *testHarness) SnapshotMetadataIteratorDone(numberRecords int) {
+func (th *testHarness) SnapshotMetadataIteratorDone(numberRecords int) error {
 	th.InSnapshotMetadataIteratorDoneNR = numberRecords
+
+	return nil
 }
 
 // fake helpers
