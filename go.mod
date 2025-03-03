@@ -5,11 +5,11 @@ go 1.23.6
 require (
 	github.com/container-storage-interface/spec v1.11.0
 	github.com/golang/mock v1.6.0
-	github.com/kubernetes-csi/csi-lib-utils v0.20.0
+	github.com/kubernetes-csi/csi-lib-utils v0.21.0
 	github.com/kubernetes-csi/csi-test/v5 v5.3.1
 	github.com/kubernetes-csi/external-snapshot-metadata/client v0.0.0-20240708191355-ca55d80f214a
 	github.com/kubernetes-csi/external-snapshotter/client/v8 v8.2.0
-	github.com/kubernetes-csi/external-snapshotter/v8 v8.2.0
+	github.com/kubernetes-csi/external-snapshotter/v8 v8.2.1
 	github.com/stretchr/testify v1.10.0
 	google.golang.org/grpc v1.70.0
 	google.golang.org/protobuf v1.36.5
