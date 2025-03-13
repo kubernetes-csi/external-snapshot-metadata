@@ -104,19 +104,18 @@ jobs:
           echo "Execute external-snapshot-metadata-client to list allocated blocks and verify the data allocated in snap-1"
           kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target
 
-          # TODO: uncomment the following two blocks after the pr https://github.com/kubernetes-csi/csi-driver-host-path/pull/579 is merged.
-          # echo "Write more data into source-device to test negative case"
-          # kubectl exec -i backup-app-client -- sh -c "dd if=/dev/urandom of=/dev/source bs=4K count=6 oflag=direct"
+          echo "Write more data into source-device to test negative case"
+          kubectl exec -i backup-app-client -- sh -c "dd if=/dev/urandom of=/dev/source bs=4K count=6 oflag=direct"
           
-          # echo "Execute external-snapshot-metadata-client to expect a failure"
-          # export failed=0
-          # kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target && { echo "Command was expected to fail"; exit 1;}
-          # if [ $failed -ne 1 ]; then
-          #   echo "Command was expected to fail"
-          #   exit 1
-          # else
-          #   echo "Command failed as expected"
-          # fi
+          echo "Execute external-snapshot-metadata-client to expect a failure"
+          export failed=0
+          kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target || { export failed=1; true;}
+          if [ $failed -ne 1 ]; then
+            echo "Command was expected to fail but it succeeded"
+            exit 1
+          else
+            echo "Command failed as expected"
+          fi
 
           echo "Delete backup-app-client pod and source-device and target-device PVCs"
           kubectl delete -f deploy/example/backup-app/testdata/backup-app-pod.yaml
