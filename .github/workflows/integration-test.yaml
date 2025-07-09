@@ -6,8 +6,11 @@ on:
 
 jobs:
   minikube-ci:
-    name: Intergration test
+    name: Integration test (with${{ matrix.audience == false && 'out' || '' }} audience parameter)
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        audience: [false, true]
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
@@ -29,6 +32,13 @@ jobs:
       - name: Deploy snapshot-controller
         run: |
           ./scripts/deploy-snapshot-controller.sh deploy
+
+      - name: Configure audience parameter
+        run: |
+          if [ "${{ matrix.audience }}" = "true" ]; then
+            echo "Enabling audience parameter"
+            sed -i 's/# - "--audience=test-backup-client"/- "--audience=test-backup-client"/' deploy/example/csi-driver/csi-driver-with-snapshot-metadata-sidecar.yaml
+          fi
 
       - name: Deploy csi-hostpath-driver
         run: |
