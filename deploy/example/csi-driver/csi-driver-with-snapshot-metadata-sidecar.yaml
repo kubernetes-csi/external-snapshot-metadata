@@ -29,6 +29,10 @@ spec:
           - "--csi-address=/csi/csi.sock"
           - "--tls-cert=/tmp/certificates/tls.crt"
           - "--tls-key=/tmp/certificates/tls.key"
+          # (optional) audience token string can be passed here.
+          # If specified, the sidecar will use this instead of
+          # fetching the token from SnapshotMetadataService CR.
+          # - "--audience=test-backup-client"
           readinessProbe:
             exec:
               command:
