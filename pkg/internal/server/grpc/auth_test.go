@@ -41,6 +41,14 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 		assert.Error(t, err)
 		assert.Empty(t, retAudience)
 
+		// set audience in Args
+		testAudience := "test-audience"
+		s.config.Runtime.Audience = testAudience
+		retAudience, err = s.getAudienceForDriver(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, testAudience, retAudience)
+		s.config.Runtime.Audience = ""
+
 		// fail via authenticateAndAuthorize
 		err = s.authenticateAndAuthorize(context.Background(), "some-token", "some-namespace")
 		assert.Error(t, err)

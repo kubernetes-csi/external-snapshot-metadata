@@ -56,6 +56,8 @@ type Args struct {
 	HttpEndpoint string
 	// MetricsPath is the path where metrics will be recorded
 	MetricsPath string
+	// Audience string is used for authentication.
+	Audience string
 }
 
 func (args *Args) Validate() error {
@@ -100,6 +102,7 @@ type Runtime struct {
 	CSIConn        *grpc.ClientConn
 	MetricsManager metrics.CSIMetricsManager
 	DriverName     string
+	Audience       string
 }
 
 // initialize obtains the clients and then the CSI driver name.

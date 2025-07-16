@@ -69,6 +69,11 @@ func (s *Server) authenticateRequest(ctx context.Context, securityToken string) 
 }
 
 func (s *Server) getAudienceForDriver(ctx context.Context) (string, error) {
+	if audience := s.audience(); audience != "" {
+		// If the audience string is set, return it.
+		return audience, nil
+	}
+
 	sms, err := s.cbtClient().CbtV1alpha1().SnapshotMetadataServices().Get(ctx, s.driverName(), apimetav1.GetOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, msgInternalFailedToFindCR, "driver", s.driverName())
