@@ -101,6 +101,10 @@ func (s *Server) csiConnection() *grpc.ClientConn {
 	return s.config.Runtime.CSIConn
 }
 
+func (s *Server) audience() string {
+	return s.config.Runtime.Audience
+}
+
 func buildOptions(config ServerConfig) ([]grpc.ServerOption, error) {
 	tlsOptions, err := buildTLSOption(config.Runtime.TLSCertFile, config.Runtime.TLSKeyFile)
 	if err != nil {

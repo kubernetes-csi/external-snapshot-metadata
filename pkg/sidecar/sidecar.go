@@ -55,6 +55,7 @@ const (
 	flagTLSCert                 = "tls-cert"
 	flagTLSKey                  = "tls-key"
 	flagVersion                 = "version"
+	flagAudience                = "audience"
 
 	// tlsCertEnvVar is an environment variable that specifies the path to tls certificate file.
 	tlsCertEnvVar = "TLS_CERT_PATH"
@@ -130,6 +131,7 @@ type sidecarFlagSet struct {
 	showVersion        *bool
 	tlsCert            *string
 	tlsKey             *string
+	audience           *string
 }
 
 var sidecarFlagSetErrorHandling flag.ErrorHandling = flag.ExitOnError // UT interception point.
@@ -149,6 +151,7 @@ func newSidecarFlagSet(name, version string) *sidecarFlagSet {
 	s.grpcPort = s.Int(flagGRPCPort, defaultGRPCPort, "GRPC SnapshotMetadata service port number")
 	s.tlsCert = s.String(flagTLSCert, os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file. Can also be set with the environment variable "+tlsCertEnvVar+".")
 	s.tlsKey = s.String(flagTLSKey, os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file. Can also be set with the environment variable "+tlsKeyEnvVar+".")
+	s.audience = s.String(flagAudience, "", "Audience string used for authentication.")
 
 	s.maxStreamingDurMin = s.Int(flagMaxStreamingDurationMin, defaultMaxStreamingDurationMin, "The maximum duration in minutes for any individual streaming session")
 
@@ -193,6 +196,7 @@ func (s *sidecarFlagSet) runtimeArgsFromFlags() runtime.Args {
 		TLSKeyFile:   *s.tlsKey,
 		HttpEndpoint: *s.httpEndpoint,
 		MetricsPath:  *s.metricsPath,
+		Audience:     *s.audience,
 	}
 }
 
