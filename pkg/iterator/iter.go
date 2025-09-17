@@ -25,6 +25,7 @@ import (
 	"io"
 	"strings"
 
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	"google.golang.org/grpc"
 	grpcCreds "google.golang.org/grpc/credentials"
 	authv1 "k8s.io/api/authentication/v1"
@@ -65,6 +66,7 @@ func GetSnapshotMetadata(ctx context.Context, args Args) error {
 	return newIterator(args).run(ctx)
 }
 
+// Args contains the arguments to the GetSnapshotMetadata function.
 type Args struct {
 	// Client interfaces are obtained from BuildClients.
 	Clients
@@ -78,11 +80,32 @@ type Args struct {
 	// SnapshotName identifies a VolumeSnaphot.
 	SnapshotName string
 
+	// PrevSnapshotID is the CSI handle of a VolumeSnapshot, set in
+	// the Status.SnapshotHandle field of its associated
+	// VolumeSnapshotContent object.
+	//
+	// The field is optional, and if specified will result in
+	// enumeration of the changed blocks between the VolumeSnapshot
+	// identified by it and that identified by the SnapshotName field.
+	//
+	// If both PrevSnapshotID and PrevSnapshotName are specified then
+	// the latter is ignored.
+	// If neither are specified then the allocated blocks of the VolumeSnapshot
+	// identified by SnapshotName will be enumerated.
+	PrevSnapshotID string
+
 	// PrevSnapshotName is optional, and if specified will result in
 	// enumeration of the changed blocks between the VolumeSnapshot
 	// identified by it and that identified by the SnapshotName field.
-	// If not specified then the allocated blocks of the VolumeSnapshot
+	//
+	// If both PrevSnapshotID and PrevSnapshotName are specified then
+	// the latter is ignored.
+	// If neither are specified then the allocated blocks of the VolumeSnapshot
 	// identified by SnapshotName will be enumerated.
+	//
+	// If PrevSnapshotName is specified and PrevSnapshotID is not specified
+	// then the VolumeSnapshotContent object associated with the named
+	// VolumeSnapshot object will be used to obtain its CSI handle.
 	PrevSnapshotName string
 
 	// StartingOffset is the initial byte offset.
@@ -170,6 +193,8 @@ type iteratorHelpers interface {
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
 	getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
 	getChangedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
+	getVolumeSnapshot(ctx context.Context, namespace, name string) (*snapshotv1.VolumeSnapshot, error)
+	getVolumeSnapshotContent(ctx context.Context, vs *snapshotv1.VolumeSnapshot) (*snapshotv1.VolumeSnapshotContent, error)
 }
 
 func newIterator(args Args) *iterator {
@@ -232,9 +257,15 @@ func (iter *iterator) run(ctx context.Context) error {
 	ctx, cancelFn := context.WithCancel(ctx)
 	defer cancelFn()
 
-	if iter.PrevSnapshotName == "" {
+	switch {
+	case iter.PrevSnapshotID == "" && iter.PrevSnapshotName == "":
 		err = iter.h.getAllocatedBlocks(ctx, apiClient, securityToken)
-	} else {
+	case iter.PrevSnapshotID == "" && iter.PrevSnapshotName != "":
+		if iter.PrevSnapshotID, err = iter.getPrevSnapshotID(ctx); err != nil {
+			break
+		}
+		fallthrough
+	default:
 		err = iter.h.getChangedBlocks(ctx, apiClient, securityToken)
 	}
 
@@ -365,13 +396,13 @@ func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.Snaps
 	stream, err := grpcClient.GetMetadataDelta(ctx, &api.GetMetadataDeltaRequest{
 		SecurityToken:      securityToken,
 		Namespace:          iter.Namespace,
-		BaseSnapshotName:   iter.PrevSnapshotName,
+		BaseSnapshotId:     iter.PrevSnapshotID,
 		TargetSnapshotName: iter.SnapshotName,
 		StartingOffset:     iter.StartingOffset,
 		MaxResults:         iter.MaxResults,
 	})
 	if err != nil {
-		return fmt.Errorf("GetMetadataDelta(%s,%s,%s): %w", iter.Namespace, iter.PrevSnapshotName, iter.SnapshotName, err)
+		return fmt.Errorf("GetMetadataDelta(%s,%s,%s): %w", iter.Namespace, iter.PrevSnapshotID, iter.SnapshotName, err)
 	}
 
 	for {
@@ -381,7 +412,7 @@ func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.Snaps
 		}
 
 		if err != nil {
-			return fmt.Errorf("GetMetadataDelta(%s,%s,%s).Recv: %w", iter.Namespace, iter.PrevSnapshotName, iter.SnapshotName, err)
+			return fmt.Errorf("GetMetadataDelta(%s,%s,%s).Recv: %w", iter.Namespace, iter.PrevSnapshotID, iter.SnapshotName, err)
 		}
 
 		iter.recordNum++
@@ -395,4 +426,63 @@ func (iter *iterator) getChangedBlocks(ctx context.Context, grpcClient api.Snaps
 			return err
 		}
 	}
+}
+
+func (iter *iterator) getPrevSnapshotID(ctx context.Context) (string, error) {
+	vs, err := iter.h.getVolumeSnapshot(ctx, iter.Namespace, iter.PrevSnapshotName)
+	if err != nil {
+		return "", err
+	}
+
+	vsc, err := iter.h.getVolumeSnapshotContent(ctx, vs)
+	if err != nil {
+		return "", err
+	}
+
+	return *vsc.Status.SnapshotHandle, nil
+}
+
+func (iter *iterator) getVolumeSnapshot(ctx context.Context, namespace, vsName string) (*snapshotv1.VolumeSnapshot, error) {
+	vs, err := iter.Clients.SnapshotClient.SnapshotV1().VolumeSnapshots(namespace).Get(ctx, vsName, apimetav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("VolumeSnapshots.Get(%s/%s): %w", namespace, vsName, err)
+	}
+
+	// Check ready-to-use if set, otherwise ignore.
+	if vs.Status.ReadyToUse != nil && !*vs.Status.ReadyToUse {
+		return nil, fmt.Errorf("VolumeSnapshot %s/%s is not yet ready", namespace, vsName)
+	}
+
+	// The BoundVolumeSnapshotContentName must be set.
+	if vs.Status.BoundVolumeSnapshotContentName == nil {
+		return nil, fmt.Errorf("VolumeSnapshot %s/%s boundVolumeSnapshotContentName not set", namespace, vsName)
+	}
+
+	return vs, nil
+}
+
+func (iter *iterator) getVolumeSnapshotContent(ctx context.Context, vs *snapshotv1.VolumeSnapshot) (*snapshotv1.VolumeSnapshotContent, error) {
+	vscName := *vs.Status.BoundVolumeSnapshotContentName
+	vsc, err := iter.Clients.SnapshotClient.SnapshotV1().VolumeSnapshotContents().Get(ctx, vscName, apimetav1.GetOptions{})
+	if err != nil {
+		return nil, fmt.Errorf("VolumeSnapshotContent.Get(%s): %w", vscName, err)
+	}
+
+	if vsc.Spec.VolumeSnapshotRef.UID != "" && vsc.Spec.VolumeSnapshotRef.UID != vs.UID {
+		return nil, fmt.Errorf("VolumeSnapshotContent(%s) volumeSnapshotRef.UID does not identify VolumeSnapshot(%s/%s)", vscName, vs.Namespace, vs.Name)
+	} else if vsc.Spec.VolumeSnapshotRef.Namespace != vs.Namespace || vsc.Spec.VolumeSnapshotRef.Name != vs.Name {
+		return nil, fmt.Errorf("VolumeSnapshotContent(%s) volumeSnapshotRef does not identify VolumeSnapshot(%s/%s)", vscName, vs.Namespace, vs.Name)
+	}
+
+	// Check ready-to-use if set, otherwise ignore.
+	if vsc.Status.ReadyToUse != nil && !*vsc.Status.ReadyToUse {
+		return nil, fmt.Errorf("VolumeSnapshotContent(%s) is not yet ready", vscName)
+	}
+
+	// The SnapshotHandle must be set.
+	if vsc.Status.SnapshotHandle == nil {
+		return nil, fmt.Errorf("VolumeSnapshotContent(%s) snapshot handle not set", vscName)
+	}
+
+	return vsc, nil
 }

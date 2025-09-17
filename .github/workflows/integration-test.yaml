@@ -1,5 +1,5 @@
 ---
-name: Intergration test
+name: Integration test
 
 on:
   pull_request
@@ -26,8 +26,8 @@ jobs:
 
       - name: Build csi-snapshot-metadata container image
         run: |
-          # make build-csi-snapshot-metadata
-          # minikube image build -f ./cmd/csi-snapshot-metadata/Dockerfile -t gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:test .
+          make build-csi-snapshot-metadata
+          minikube image build -f ./cmd/csi-snapshot-metadata/Dockerfile -t gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:test .
 
       - name: Deploy snapshot-controller
         run: |
@@ -46,7 +46,7 @@ jobs:
 
           git clone https://github.com/kubernetes-csi/csi-driver-host-path.git ~/csi-driver-host-path
 
-          CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="false" CSI_SNAPSHOT_METADATA_TAG="main" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
+          CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="false" CSI_SNAPSHOT_METADATA_TAG="test" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
 
           kubectl apply -f ./deploy/example/csi-driver/testdata/
 
@@ -160,11 +160,22 @@ jobs:
           kubectl cp ./snapshot-metadata-lister default/backup-app-client:/snapshot-metadata-lister -c run-client
           kubectl cp ./snapshot-metadata-verifier default/backup-app-client:/snapshot-metadata-verifier -c run-client
 
-          echo "Execute external-snapshot-metadata-client to list changed blocks between snap-1 and snap-2"
+          echo "Execute external-snapshot-metadata-client to list changed blocks between snap-1 and snap-2 using snapshot names"
           kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig=""
 
-          echo "Execute external-snapshot-metadata-client to verify the data between snap-1 and snap-2"
+          VSC_NAME=`kubectl get volumesnapshot snap-1 -o jsonpath="{.status.boundVolumeSnapshotContentName}"`
+          echo "VolumeSnapshotContent for VolumeSnapshot snap-1 is [$VSC_NAME]"
+          SNAP_HANDLE=`kubectl get volumesnapshotcontent $VSC_NAME -o jsonpath="{.status.snapshotHandle}"`
+          echo "CSI snapshot handle of VolumeSnapshot snap-1 is [$SNAP_HANDLE]"
+
+          echo "Execute external-snapshot-metadata-client to list changed blocks between snap-1 and snap-2 using the CSI handle"
+          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -previous-snapshot-id "$SNAP_HANDLE" -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig=""
+
+          echo "Execute external-snapshot-metadata-client to verify the data between snap-1 and snap-2 using snapshot names"
           kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -previous-snapshot snap-1 -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target
+
+          echo "Execute external-snapshot-metadata-client to verify the data between snap-1 and snap-2 using the CSI handle"
+          kubectl exec backup-app-client -- /snapshot-metadata-verifier -max-results 10 -previous-snapshot-id "$SNAP_HANDLE" -snapshot snap-2 -starting-offset 0 -namespace default -kubeconfig="" -source-device-path /dev/source -target-device-path /dev/target
 
           echo "Write more data into source-device to test negative case"
           kubectl exec -i backup-app-client -- sh -c "dd if=/dev/urandom of=/dev/source bs=4K count=6 oflag=direct"

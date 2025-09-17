@@ -38,17 +38,26 @@ const (
 
    %[1]s -n Namespace -s Snapshot -src /dev/source -tgt /dev/target [Additional flags ...]
 
-2. Verify changed block metadata between two snapshots
+2. Verify changed block metadata between two snapshots, using the previous snapshot object name
 
    %[1]s -n Namespace -s Snapshot -p PreviousSnapshot -src /dev/source -tgt /dev/target [Additional flags ...]
 
-3. Display the full help message
+3. Verify changed block metadata between two snapshots, using the CSI handle of the previous snapshot
+
+   %[1]s -n Namespace -s Snapshot -P PreviousSnapshotID -src /dev/source -tgt /dev/target [Additional flags ...]
+
+   
+4. Display the full help message
 
    %[1]s -h
 `
 	usageFmt = `This command verifies allocated blocks of a VolumeSnapshot object.
 If a previous VolumeSnapshot object is also specified then changed blocks between
 the two snapshots, which must both be from the same PersistentVolume, are verified.
+The previous VolumeSnapshot object can be specified either by name or by its CSI
+snapshot handle, obtained from the Status.SnapshotHandle field of its associated
+VolumeSnapshotContent object. The CSI handle takes precedence over the name, in
+case both are specified.
 
 The command is usually invoked in a Pod in the cluster, as the gRPC client
 needs to resolve the DNS address in the SnapshotMetadataService CR.
@@ -73,10 +82,11 @@ func parseFlags() {
 	}
 
 	stringFlag(&args.Namespace, "namespace", "n", "", "The Namespace containing the VolumeSnapshot objects.")
-	stringFlag(&args.SnapshotName, "snapshot", "s", "", "The name of the VolumeSnapshot for which metadata is to be displayed.")
-	stringFlag(&args.PrevSnapshotName, "previous-snapshot", "p", "", "The name of an earlier VolumeSnapshot against which changed block metadata is to be displayed.")
+	stringFlag(&args.SnapshotName, "snapshot", "s", "", "The name of the VolumeSnapshot for which metadata is to be verified.")
+	stringFlag(&args.PrevSnapshotID, "previous-snapshot-id", "P", "", "The CSI handle of an earlier VolumeSnapshot against which changed block metadata is to be verified.")
+	stringFlag(&args.PrevSnapshotName, "previous-snapshot", "p", "", "The name of an earlier VolumeSnapshot against which changed block metadata is to be verified.")
 	stringFlag(&sourceDevicePath, "source-device-path", "src", "", "Path of the source device. This device should be the PVC in block mode restored from the snapshot which is passed as the '-snapshot' flag.")
-	stringFlag(&targetDevicePath, "target-device-path", "tgt", "", "Path of the target device. This device should be a PVC in block mode restored from the snapshot which is passed as the '-previous-snapshot' flag or a fresh PVC in block mode in case the flag is not passed.")
+	stringFlag(&targetDevicePath, "target-device-path", "tgt", "", "Path of the target device. This device should be a PVC in block mode restored from the snapshot which is passed as the '-previous-snapshot' or '-previous-snapshot-id' flags, or a fresh PVC in block mode in case the flags are not passed.")
 
 	if home := homedir.HomeDir(); home != "" {
 		flag.StringVar(&kubeConfig, "kubeconfig", filepath.Join(home, ".kube", "config"), "Path to the kubeconfig file.")

@@ -38,18 +38,26 @@ const (
 
    %[1]s -n Namespace -s Snapshot [Additional flags ...]
 
-2. Display changed block metadata between two snapshots
+2. Display changed block metadata between two snapshots, using the previous snapshot object name
 
    %[1]s -n Namespace -s Snapshot -p PreviousSnapshot [Additional flags ...]
 
-3. Display the full help message
+3. Display changed block metadata between two snapshots, using the CSI handle of the previous snapshot
+
+   %[1]s -n Namespace -s Snapshot -P PreviousSnapshotID [Additional flags ...]
+   
+4. Display the full help message
 
    %[1]s -h
 `
 	usageFmt = `This command displays metadata on the content of a VolumeSnapshot object.
 If a previous VolumeSnapshot object is also specified then the metadata
 describes the content changes between the two snapshots, which must both
-be from the same PersistentVolume.
+be from the same PersistentVolume. The previous VolumeSnapshot object can
+be specified either by name or by its CSI snapshot handle, obtained from
+the Status.SnapshotHandle field of its associated VolumeSnapshotContent
+object. The CSI handle takes precedence over the name, in case both are
+specified.
 
 The command is usually invoked in a Pod in the cluster, as the gRPC client
 needs to resolve the DNS address in the SnapshotMetadataService CR.
@@ -75,6 +83,7 @@ func parseFlags() {
 
 	stringFlag(&args.Namespace, "namespace", "n", "", "The Namespace containing the VolumeSnapshot objects.")
 	stringFlag(&args.SnapshotName, "snapshot", "s", "", "The name of the VolumeSnapshot for which metadata is to be displayed.")
+	stringFlag(&args.PrevSnapshotID, "previous-snapshot-id", "P", "", "The CSI handle of an earlier VolumeSnapshot against which changed block metadata is to be displayed.")
 	stringFlag(&args.PrevSnapshotName, "previous-snapshot", "p", "", "The name of an earlier VolumeSnapshot against which changed block metadata is to be displayed.")
 	stringFlag(&outputFormat, "output-format", "o", "table", "The format of the output. Possible values: \"table\" or \"json\".")
 

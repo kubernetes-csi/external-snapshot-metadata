@@ -52,7 +52,6 @@ message GetMetadataAllocatedRequest {
   string security_token = 1;
 
   // This field indicates the Namespace where the VolumeSnapshot exists.
-  // If not set, the VolumeSnapshot will be looked for in the "default" Namespace.
   // This field is REQUIRED.
   string namespace = 2;
 
@@ -120,7 +119,7 @@ message GetMetadataAllocatedResponse {
 }
 
 // The GetMetadataDeltaRequest message is used to solicit metadata on the data
-// ranges that have changed between two snapshots.
+// ranges that have changed between two snapshots of the same PersistentVolume.
 message GetMetadataDeltaRequest {
   // This field specifies an audience scoped authentication token presented by client.
   // This token is used to authenticate and authorize the request at server side.
@@ -128,14 +127,21 @@ message GetMetadataDeltaRequest {
   string security_token = 1;
 
   // This field indicates the Namespace where the VolumeSnapshot exists.
-  // If not set, the VolumeSnapshot will be looked for in the "default" Namespace.
   // This field is REQUIRED.
   string namespace = 2;
 
-  // This is the VolumeSnapshot object name against which changes
-  // are to be computed.
+  // This is the CSI handle of the base VolumeSnapshot object against which changes
+  // are to be computed. 
+  // The value is passed on blindly to the CSI driver without any verification by
+  // the sidecar.
+  // A backup application must have obtained this value from the Status.SnapshotHandle
+  // field of the VolumeSnapshotContent object associated with the base VolumeSnapshot
+  // object at some time prior to making this request.
+  // It is the backup application's responsibility to determine if the underlying CSI
+  // driver requires the base VolumeSnapshot object to exist at the time that this
+  // request is made, and take that into consideration in its snapshot retention policy.
   // This field is REQUIRED.
-  string base_snapshot_name = 3;
+  string base_snapshot_id = 3;
 
   // This is the name of a second VolumeSnapshot in the same volume,
   // created after the base snapshot.
