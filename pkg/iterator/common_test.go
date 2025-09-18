@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 	"google.golang.org/grpc/test/bufconn"
 	authv1 "k8s.io/api/authentication/v1"
+	v1 "k8s.io/api/core/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
@@ -37,18 +38,19 @@ import (
 )
 
 type testHarness struct {
-	Address          string
-	Audience         string
-	CACert           []byte
-	CSIDriver        string
-	MaxResults       int32
-	Namespace        string
-	PrevSnapshotName string
-	SecurityToken    string
-	SAName           string
-	SANamespace      string
-	SnapshotName     string
-	StartingOffset   int64
+	Address            string
+	Audience           string
+	CACert             []byte
+	CSIDriver          string
+	MaxResults         int32
+	Namespace          string
+	PrevSnapshotName   string
+	SecurityToken      string
+	SAName             string
+	SANamespace        string
+	SnapshotName       string
+	StartingOffset     int64
+	PrevSnapshotHandle string
 
 	FakeKubeClient     *fake.Clientset
 	FakeSnapshotClient *fakesnapshot.Clientset
@@ -94,21 +96,31 @@ type testHarness struct {
 	InGetChangedBlocksToken  string
 	RetGetChangedBlocksErr   error
 
+	InGetVolumeSnapshotNamespace string
+	InGetVolumeSnapshotName      string
+	RetGetVolumeSnapshot         *snapshotv1.VolumeSnapshot
+	RetGetVolumeSnapshotErr      error
+
+	InGetVolumeSnapshotContentVs   *snapshotv1.VolumeSnapshot
+	RetGetVolumeSnapshotContent    *snapshotv1.VolumeSnapshotContent
+	RetGetVolumeSnapshotContentErr error
+
 	InCallContext context.Context
 }
 
 func newTestHarness() *testHarness {
 	return &testHarness{
-		Namespace:        "namespace",
-		SnapshotName:     "snapshotName",
-		PrevSnapshotName: "prevSnapshotName",
-		SAName:           "serviceAccount",
-		SANamespace:      "serviceAccountNamespace",
-		CSIDriver:        "csiDriver",
-		Audience:         "audience",
-		Address:          "sidecar.csiDriver.k8s.local", // invalid
-		CACert:           []byte{1, 2, 3},               // invalid
-		SecurityToken:    "securityToken",
+		Namespace:          "namespace",
+		SnapshotName:       "snapshotName",
+		PrevSnapshotHandle: "prevSnapshotHandle",
+		PrevSnapshotName:   "prevSnapshotName",
+		SAName:             "serviceAccount",
+		SANamespace:        "serviceAccountNamespace",
+		CSIDriver:          "csiDriver",
+		Audience:           "audience",
+		Address:            "sidecar.csiDriver.k8s.local", // invalid
+		CACert:             []byte{1, 2, 3},               // invalid
+		SecurityToken:      "securityToken",
 
 		FakeKubeClient:     fake.NewClientset(),
 		FakeSnapshotClient: fakesnapshot.NewSimpleClientset(),
@@ -174,6 +186,13 @@ func (th *testHarness) FakeVS() (*snapshotv1.VolumeSnapshot, *snapshotv1.VolumeS
 		},
 		Spec: snapshotv1.VolumeSnapshotContentSpec{
 			Driver: th.CSIDriver,
+			VolumeSnapshotRef: v1.ObjectReference{
+				Namespace: vs.Namespace,
+				Name:      vs.Name,
+			},
+		},
+		Status: &snapshotv1.VolumeSnapshotContentStatus{
+			SnapshotHandle: &th.PrevSnapshotHandle,
 		},
 	}
 	return vs, vsc
@@ -219,7 +238,7 @@ func (th *testHarness) FakeGetMetadataDeltaRequest() *api.GetMetadataDeltaReques
 		SecurityToken:      th.SecurityToken,
 		Namespace:          th.Namespace,
 		TargetSnapshotName: th.SnapshotName,
-		BaseSnapshotName:   th.PrevSnapshotName,
+		BaseSnapshotId:     th.PrevSnapshotHandle,
 		StartingOffset:     args.StartingOffset,
 		MaxResults:         args.MaxResults,
 	}
@@ -298,4 +317,17 @@ func (th *testHarness) getChangedBlocks(ctx context.Context, grpcClient api.Snap
 	th.InGetChangedBlocksClient = grpcClient
 	th.InGetChangedBlocksToken = securityToken
 	return th.RetGetChangedBlocksErr
+}
+
+func (th *testHarness) getVolumeSnapshot(ctx context.Context, namespace, name string) (*snapshotv1.VolumeSnapshot, error) {
+	th.InCallContext = ctx
+	th.InGetVolumeSnapshotNamespace = namespace
+	th.InGetVolumeSnapshotName = name
+	return th.RetGetVolumeSnapshot, th.RetGetVolumeSnapshotErr
+}
+
+func (th *testHarness) getVolumeSnapshotContent(ctx context.Context, vs *snapshotv1.VolumeSnapshot) (*snapshotv1.VolumeSnapshotContent, error) {
+	th.InCallContext = ctx
+	th.InGetVolumeSnapshotContentVs = vs
+	return th.RetGetVolumeSnapshotContent, th.RetGetVolumeSnapshotContentErr
 }

@@ -33,13 +33,12 @@ const (
 	msgInternalFailedToSendResponse       = "failed to send response"
 	msgInternalFailedToSendResponseFmt    = msgInternalFailedToSendResponse + ": %v"
 
-	msgInvalidArgumentBaseSnapshotNameMissing   = "baseSnapshotName cannot be empty"
+	msgInvalidArgumentBaseSnapshotIdMissing     = "baseSnapshotId cannot be empty"
 	msgInvalidArgumentNamespaceMissing          = "namespace parameter cannot be empty"
 	msgInvalidArgumentSecurityTokenMissing      = "securityToken is missing"
 	msgInvalidArgumentSnaphotNameMissing        = "snapshotName cannot be empty"
 	msgInvalidArgumentTargetSnapshotNameMissing = "targetSnapshotName cannot be empty"
 	msgInvalidArgumentSnaphotDriverInvalidFmt   = "VolumeSnapshot '%s' does not belong to the CSI driver '%s'"
-	msgInvalidArgumentDiffSnapshotSourceVolumes = "baseSnapshot and targetSnapshot does not belong to the same volume"
 
 	msgPermissionDeniedPrefix = "user does not have permissions to perform the operation"
 	msgPermissionDeniedFmt    = msgPermissionDeniedPrefix + ": %s"

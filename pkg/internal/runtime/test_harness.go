@@ -219,7 +219,7 @@ func (th *TestHarness) WithMockCSIDriver(t *testing.T) *TestHarness {
 	addr := drv.Address()
 	metricsManager := metrics.NewCSIMetricsManagerWithOptions("",
 		metrics.WithSubsystem(SubSystem),
-		metrics.WithLabelNames(LabelTargetSnapshotName, LabelBaseSnapshotName))
+		metrics.WithLabelNames(LabelTargetSnapshotName, LabelBaseSnapshotID))
 	csiConn, err := connection.Connect(context.Background(), addr, metricsManager)
 	if err != nil {
 		t.Fatal("Connect", err)

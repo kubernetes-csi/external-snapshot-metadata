@@ -26,9 +26,11 @@ import (
 	"github.com/golang/mock/gomock"
 	fakesnapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
+	v1 "k8s.io/api/core/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
 	clientgotesting "k8s.io/client-go/testing"
+	"k8s.io/utils/ptr"
 
 	fakeSmsCR "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/fake"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
@@ -145,10 +147,51 @@ func TestRun(t *testing.T) {
 		th.RetGetDefaultSAName = th.SAName
 		th.RetGetDefaultSANamespace = th.SANamespace
 
+		vs, vsc := th.FakeVS()
+		th.RetGetVolumeSnapshot = vs
+		th.RetGetVolumeSnapshotContent = vsc
+
 		iter := th.NewTestIterator()
 		iter.recordNum = 100
 		iter.SAName = ""
 		assert.NotEmpty(t, iter.PrevSnapshotName) // changed block flow
+
+		err := iter.run(context.Background())
+		assert.NoError(t, err)
+
+		// check data passed through the helpers
+		assert.True(t, th.CalledGetDefaultServiceAccount)
+		assert.True(t, th.CalledGetCSIDriverFromPrimarySnapshot)
+		assert.Equal(t, th.CSIDriver, th.InGetSnapshotMetadataServiceCRCSIDriver)
+		assert.Equal(t, th.SAName, th.InCreateSecurityTokenSAName)
+		assert.Equal(t, th.Audience, th.InCreateSecurityTokenAudience)
+		assert.Equal(t, th.CACert, th.InGetGRPCClientCA)
+		assert.Equal(t, th.Address, th.InGetGRPCClientURL)
+		assert.Equal(t, th.RetGetGRPCClient, th.InGetChangedBlocksClient)
+		assert.Equal(t, th.RetCreateSecurityToken, th.InGetChangedBlocksToken)
+
+		// Done called
+		assert.Equal(t, iter.recordNum, th.InSnapshotMetadataIteratorDoneNR)
+
+		// the call context is canceled
+		assert.ErrorIs(t, th.InCallContext.Err(), context.Canceled)
+	})
+
+	t.Run("get-changed-blocks-base-snapshot-id", func(t *testing.T) {
+		th := newTestHarness()
+		th.RetGetCSIDriverFromPrimarySnapshot = th.CSIDriver
+		th.RetGetSnapshotMetadataServiceCRService = th.FakeCR()
+		th.RetGetGRPCClient = th.GRPCSnapshotMetadataClient(t)
+		th.RetCreateSecurityToken = "security-token"
+		th.RetGetDefaultSAName = th.SAName
+		th.RetGetDefaultSANamespace = th.SANamespace
+
+		iter := th.NewTestIterator()
+		iter.recordNum = 100
+		iter.SAName = ""
+		iter.PrevSnapshotName = ""
+		iter.PrevSnapshotID = th.PrevSnapshotHandle
+		assert.NotEmpty(t, iter.PrevSnapshotID) // changed block flow
 
 		err := iter.run(context.Background())
 		assert.NoError(t, err)
@@ -264,6 +307,33 @@ func TestRun(t *testing.T) {
 		assert.Equal(t, th.Address, th.InGetGRPCClientURL)
 	})
 
+	t.Run("err-get-previous-snapshot-id", func(t *testing.T) {
+		th := newTestHarness()
+		th.RetGetSnapshotMetadataServiceCRService = th.FakeCR()
+		th.RetGetGRPCClient = th.GRPCSnapshotMetadataClient(t)
+		th.RetCreateSecurityToken = "security-token"
+		th.RetGetVolumeSnapshotErr = testErr
+
+		iter := th.NewTestIterator()
+		iter.recordNum = 100
+		iter.CSIDriver = th.CSIDriver
+
+		assert.Equal(t, th.PrevSnapshotName, iter.PrevSnapshotName)
+		assert.Empty(t, iter.PrevSnapshotID)
+
+		err := iter.run(context.Background())
+		assert.ErrorIs(t, err, testErr)
+
+		// check data passed through the helpers
+		assert.Equal(t, th.PrevSnapshotName, th.InGetVolumeSnapshotName)
+
+		// Done not called
+		assert.Zero(t, th.InSnapshotMetadataIteratorDoneNR)
+
+		// the call context is canceled
+		assert.ErrorIs(t, th.InCallContext.Err(), context.Canceled)
+	})
+
 	t.Run("err-get-changed-blocks", func(t *testing.T) {
 		th := newTestHarness()
 		th.RetGetSnapshotMetadataServiceCRService = th.FakeCR()
@@ -271,9 +341,16 @@ func TestRun(t *testing.T) {
 		th.RetCreateSecurityToken = "security-token"
 		th.RetGetChangedBlocksErr = testErr
 
+		vs, vsc := th.FakeVS()
+		th.RetGetVolumeSnapshot = vs
+		th.RetGetVolumeSnapshotContent = vsc
+
 		iter := th.NewTestIterator()
 		iter.recordNum = 100
 		iter.CSIDriver = th.CSIDriver
+
+		assert.Equal(t, th.PrevSnapshotName, iter.PrevSnapshotName)
+		assert.Empty(t, iter.PrevSnapshotID)
 
 		err := iter.run(context.Background())
 		assert.ErrorIs(t, err, testErr)
@@ -281,6 +358,7 @@ func TestRun(t *testing.T) {
 		// check data passed through the helpers
 		assert.Equal(t, th.RetGetGRPCClient, th.InGetChangedBlocksClient)
 		assert.Equal(t, th.RetCreateSecurityToken, th.InGetChangedBlocksToken)
+		assert.Equal(t, th.PrevSnapshotName, th.InGetVolumeSnapshotName)
 
 		// Done not called
 		assert.Zero(t, th.InSnapshotMetadataIteratorDoneNR)
@@ -744,6 +822,10 @@ func TestGetChangedBlocks(t *testing.T) {
 		th.StartingOffset = 19990
 		th.MaxResults = 32
 		iter := th.NewTestIterator()
+		iter.PrevSnapshotID = th.PrevSnapshotHandle
+		iter.PrevSnapshotName = ""
+
+		assert.NotEmpty(t, iter.PrevSnapshotID)
 
 		mockController := gomock.NewController(t)
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
@@ -761,6 +843,10 @@ func TestGetChangedBlocks(t *testing.T) {
 		th := newTestHarness()
 		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
+		iter.PrevSnapshotID = th.PrevSnapshotHandle
+		iter.PrevSnapshotName = ""
+
+		assert.NotEmpty(t, iter.PrevSnapshotID)
 
 		mockController := gomock.NewController(t)
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
@@ -786,6 +872,10 @@ func TestGetChangedBlocks(t *testing.T) {
 		th := newTestHarness()
 		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
+		iter.PrevSnapshotID = th.PrevSnapshotHandle
+		iter.PrevSnapshotName = ""
+
+		assert.NotEmpty(t, iter.PrevSnapshotID)
 
 		mockController := gomock.NewController(t)
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
@@ -812,6 +902,10 @@ func TestGetChangedBlocks(t *testing.T) {
 		th := newTestHarness()
 		th.RetSnapshotMetadataIteratorRecord = nil
 		iter := th.NewTestIterator()
+		iter.PrevSnapshotID = th.PrevSnapshotHandle
+		iter.PrevSnapshotName = ""
+
+		assert.NotEmpty(t, iter.PrevSnapshotID)
 
 		mockController := gomock.NewController(t)
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
@@ -830,5 +924,290 @@ func TestGetChangedBlocks(t *testing.T) {
 		assert.ErrorIs(t, err, ErrCancelled)
 
 		checkIterRecs(t, th, iter, responses[:1])
+	})
+}
+
+func TestGetPrevSnapshotID(t *testing.T) {
+	errTest := errors.New("test-error")
+
+	t.Run("success", func(t *testing.T) {
+		th := newTestHarness()
+		vs, vsc := th.FakeVS()
+		th.RetGetVolumeSnapshot = vs
+		th.RetGetVolumeSnapshotContent = vsc
+
+		iter := th.NewTestIterator()
+		iter.PrevSnapshotID = ""
+		iter.PrevSnapshotName = vs.Name
+
+		snapID, err := iter.getPrevSnapshotID(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, *vsc.Status.SnapshotHandle, snapID)
+	})
+
+	t.Run("get-vsc-error", func(t *testing.T) {
+		th := newTestHarness()
+		vs, _ := th.FakeVS()
+		th.RetGetVolumeSnapshot = vs
+		th.RetGetVolumeSnapshotContentErr = errTest
+
+		iter := th.NewTestIterator()
+		iter.PrevSnapshotID = ""
+		iter.PrevSnapshotName = vs.Name
+
+		snapID, err := iter.getPrevSnapshotID(context.Background())
+		assert.ErrorIs(t, err, errTest)
+		assert.Empty(t, snapID)
+	})
+
+	t.Run("get-vs-error", func(t *testing.T) {
+		th := newTestHarness()
+		vs, _ := th.FakeVS()
+		th.RetGetVolumeSnapshotErr = errTest
+
+		iter := th.NewTestIterator()
+		iter.PrevSnapshotID = ""
+		iter.PrevSnapshotName = vs.Name
+
+		snapID, err := iter.getPrevSnapshotID(context.Background())
+		assert.ErrorIs(t, err, errTest)
+		assert.Empty(t, snapID)
+	})
+
+	t.Run("getVolumeSnapshot", func(t *testing.T) {
+		t.Run("get-error", func(t *testing.T) {
+			th := newTestHarness()
+			vs, _ := th.FakeVS()
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshot(context.Background(), vs.Namespace, vs.Name)
+			assert.ErrorIs(t, err, errTest)
+			assert.Nil(t, ret)
+		})
+
+		t.Run("ready-to-use-false", func(t *testing.T) {
+			th := newTestHarness()
+			vs, _ := th.FakeVS()
+			vs.Status.ReadyToUse = ptr.To(false)
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				if ga.GetNamespace() == vs.Namespace && ga.GetName() == vs.Name {
+					return true, vs, nil
+				}
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshot(context.Background(), vs.Namespace, vs.Name)
+			assert.ErrorContains(t, err, "is not yet ready")
+			assert.Nil(t, ret)
+		})
+
+		t.Run("not-bound", func(t *testing.T) {
+			th := newTestHarness()
+			vs, _ := th.FakeVS()
+			vs.Status.BoundVolumeSnapshotContentName = nil
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				if ga.GetNamespace() == vs.Namespace && ga.GetName() == vs.Name {
+					return true, vs, nil
+				}
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshot(context.Background(), vs.Namespace, vs.Name)
+			assert.ErrorContains(t, err, "boundVolumeSnapshotContentName not set")
+			assert.Nil(t, ret)
+		})
+
+		t.Run("success", func(t *testing.T) {
+			t.Run("ready-to-use-nil", func(t *testing.T) {
+				th := newTestHarness()
+				vs, _ := th.FakeVS()
+				vs.Status.ReadyToUse = nil
+				th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+					ga := action.(clientgotesting.GetAction)
+					if ga.GetNamespace() == vs.Namespace && ga.GetName() == vs.Name {
+						return true, vs, nil
+					}
+					return true, nil, errTest
+				})
+
+				iter := th.NewTestIterator()
+				ret, err := iter.getVolumeSnapshot(context.Background(), vs.Namespace, vs.Name)
+				assert.NoError(t, err)
+				assert.Equal(t, vs, ret)
+			})
+
+			t.Run("ready-to-use-true", func(t *testing.T) {
+				th := newTestHarness()
+				vs, _ := th.FakeVS()
+				vs.Status.ReadyToUse = ptr.To(true)
+				th.FakeSnapshotClient.PrependReactor("get", "volumesnapshots", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+					ga := action.(clientgotesting.GetAction)
+					if ga.GetNamespace() == vs.Namespace && ga.GetName() == vs.Name {
+						return true, vs, nil
+					}
+					return true, nil, errTest
+				})
+
+				iter := th.NewTestIterator()
+				ret, err := iter.getVolumeSnapshot(context.Background(), vs.Namespace, vs.Name)
+				assert.NoError(t, err)
+				assert.Equal(t, vs, ret)
+			})
+		})
+	})
+
+	t.Run("getVolumeSnapshotContent", func(t *testing.T) {
+		t.Run("get-error", func(t *testing.T) {
+			th := newTestHarness()
+			vs, _ := th.FakeVS()
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+			assert.ErrorIs(t, err, errTest)
+			assert.Nil(t, ret)
+		})
+
+		t.Run("invalid-ref-uid", func(t *testing.T) {
+			th := newTestHarness()
+			vs, vsc := th.FakeVS()
+			vsc.Spec.VolumeSnapshotRef = v1.ObjectReference{}
+			vsc.Spec.VolumeSnapshotRef.UID = vs.UID + "foo"
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				if ga.GetName() == vsc.Name {
+					return true, vsc, nil
+				}
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+			assert.ErrorContains(t, err, "volumeSnapshotRef.UID does not identify VolumeSnapshot")
+			assert.Nil(t, ret)
+		})
+
+		t.Run("invalid-ref-ns", func(t *testing.T) {
+			th := newTestHarness()
+			vs, vsc := th.FakeVS()
+			vsc.Spec.VolumeSnapshotRef = v1.ObjectReference{}
+			vsc.Spec.VolumeSnapshotRef.Namespace = vs.Namespace + "foo"
+			vsc.Spec.VolumeSnapshotRef.Name = vs.Name
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				if ga.GetName() == vsc.Name {
+					return true, vsc, nil
+				}
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+			assert.ErrorContains(t, err, "volumeSnapshotRef does not identify VolumeSnapshot")
+			assert.Nil(t, ret)
+		})
+
+		t.Run("invalid-ref-name", func(t *testing.T) {
+			th := newTestHarness()
+			vs, vsc := th.FakeVS()
+			vsc.Spec.VolumeSnapshotRef = v1.ObjectReference{}
+			vsc.Spec.VolumeSnapshotRef.Namespace = vs.Namespace
+			vsc.Spec.VolumeSnapshotRef.Name = vs.Name + "foo"
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				if ga.GetName() == vsc.Name {
+					return true, vsc, nil
+				}
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+			assert.ErrorContains(t, err, "volumeSnapshotRef does not identify VolumeSnapshot")
+			assert.Nil(t, ret)
+		})
+
+		t.Run("ready-to-use-false", func(t *testing.T) {
+			th := newTestHarness()
+			vs, vsc := th.FakeVS()
+			vsc.Status.ReadyToUse = ptr.To(false)
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				if ga.GetName() == vsc.Name {
+					return true, vsc, nil
+				}
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+			assert.ErrorContains(t, err, "is not yet ready")
+			assert.Nil(t, ret)
+		})
+
+		t.Run("snapshot-handle-not-set", func(t *testing.T) {
+			th := newTestHarness()
+			vs, vsc := th.FakeVS()
+			vsc.Status.SnapshotHandle = nil
+			th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				if ga.GetName() == vsc.Name {
+					return true, vsc, nil
+				}
+				return true, nil, errTest
+			})
+
+			iter := th.NewTestIterator()
+			ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+			assert.ErrorContains(t, err, "snapshot handle not set")
+			assert.Nil(t, ret)
+		})
+
+		t.Run("success", func(t *testing.T) {
+			t.Run("ready-to-use-nil", func(t *testing.T) {
+				th := newTestHarness()
+				vs, vsc := th.FakeVS()
+				vsc.Status.ReadyToUse = nil
+				th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+					ga := action.(clientgotesting.GetAction)
+					if ga.GetName() == vsc.Name {
+						return true, vsc, nil
+					}
+					return true, nil, errTest
+				})
+
+				iter := th.NewTestIterator()
+				ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+				assert.NoError(t, err)
+				assert.Equal(t, vsc, ret)
+			})
+
+			t.Run("ready-to-use-true", func(t *testing.T) {
+				th := newTestHarness()
+				vs, vsc := th.FakeVS()
+				vsc.Status.ReadyToUse = ptr.To(true)
+				th.FakeSnapshotClient.PrependReactor("get", "volumesnapshotcontents", func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+					ga := action.(clientgotesting.GetAction)
+					if ga.GetName() == vsc.Name {
+						return true, vsc, nil
+					}
+					return true, nil, errTest
+				})
+
+				iter := th.NewTestIterator()
+				ret, err := iter.getVolumeSnapshotContent(context.Background(), vs)
+				assert.NoError(t, err)
+				assert.Equal(t, vsc, ret)
+			})
+		})
 	})
 }

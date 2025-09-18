@@ -113,7 +113,7 @@ func (th *testHarness) Runtime() *runtime.Runtime {
 		SnapshotClient: th.FakeSnapshotClient,
 		DriverName:     th.DriverName,
 		CSIConn:        th.mockCSIDriverConn,
-		MetricsManager: metrics.NewCSIMetricsManagerWithOptions(th.DriverName, metrics.WithSubsystem(runtime.SubSystem), metrics.WithLabelNames(runtime.LabelTargetSnapshotName, runtime.LabelBaseSnapshotName)),
+		MetricsManager: metrics.NewCSIMetricsManagerWithOptions(th.DriverName, metrics.WithSubsystem(runtime.SubSystem), metrics.WithLabelNames(runtime.LabelTargetSnapshotName, runtime.LabelBaseSnapshotID)),
 	}
 }
 
