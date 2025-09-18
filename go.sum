@@ -59,8 +59,6 @@ github.com/kubernetes-csi/csi-lib-utils v0.22.0 h1:EUAs1+uHGps3OtVj4XVx16urhpI02
 github.com/kubernetes-csi/csi-lib-utils v0.22.0/go.mod h1:f+PalKyS4Ujsjb9+m6Rj0W6c28y3nfea3paQ/VqjI28=
 github.com/kubernetes-csi/csi-test/v5 v5.3.1 h1:Wiukp1In+kif+BFo6q2ExjgB+MbrAz4jZWzGfijypuY=
 github.com/kubernetes-csi/csi-test/v5 v5.3.1/go.mod h1:7hA2cSYJ6T8CraEZPA6zqkLZwemjBD54XAnPsPC3VpA=
-github.com/kubernetes-csi/external-snapshot-metadata/client v0.0.0-20240708191355-ca55d80f214a h1:oT3F4HOfYcvm3K4+SNH7nX3NnSrY9Fa82RCEpTMfaGA=
-github.com/kubernetes-csi/external-snapshot-metadata/client v0.0.0-20240708191355-ca55d80f214a/go.mod h1:u3KUZClAM2oUbRclI0UT15yrrnhFs3lO2a+y/WP1DSE=
 github.com/kubernetes-csi/external-snapshotter/client/v8 v8.2.0 h1:Q3jQ1NkFqv5o+F8dMmHd8SfEmlcwNeo1immFApntEwE=
 github.com/kubernetes-csi/external-snapshotter/client/v8 v8.2.0/go.mod h1:E3vdYxHj2C2q6qo8/Da4g7P+IcwqRZyy3gJBzYybV9Y=
 github.com/kubernetes-csi/external-snapshotter/v8 v8.3.0 h1:qkUw53bWEuHY0iVaF4V+oIS3r2vm8Sz1/xzf+D+yi80=
