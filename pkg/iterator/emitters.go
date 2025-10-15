@@ -99,13 +99,13 @@ type VerifierEmitter struct {
 	TargetDevice *os.File
 }
 
-const chunkSize = int64(1024 * 1024) // 4KB
+const chunkSize = int64(1024 * 1024) // 1 MiB
 var (
 	ErrFailedToSeek       = errors.New("failed to seek")
 	ErrContentsDoNotMatch = errors.New("source and target device contents do not match")
 )
 
-// copyBlock will copy chunks of 256 bytes at a time upto to sizeBytes from the source device to the target device.
+// copyBlock will copy chunks of 1 MiB at a time upto to sizeBytes from the source device to the target device.
 func (verifierEmitter *VerifierEmitter) copyBlock(bmd *api.BlockMetadata) error {
 	// Seek to the byteOffset of the source device.
 	_, err := verifierEmitter.SourceDevice.Seek(bmd.ByteOffset, io.SeekStart)
