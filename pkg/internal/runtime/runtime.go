@@ -178,7 +178,7 @@ func (rt *Runtime) csiConnect(csiAddress string) error {
 
 	metricsManager := metrics.NewCSIMetricsManagerWithOptions("",
 		metrics.WithSubsystem(SubSystem),
-		metrics.WithLabelNames(LabelTargetSnapshotName, LabelBaseSnapshotName))
+		metrics.WithLabelNames(LabelTargetSnapshotName, LabelBaseSnapshotID))
 	csiConn, err := connection.Connect(
 		ctx,
 		csiAddress,

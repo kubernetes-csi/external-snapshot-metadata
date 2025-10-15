@@ -43,7 +43,7 @@ func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.S
 	defer func(startTime time.Time) {
 		opLabel := map[string]string{
 			runtime.LabelTargetSnapshotName: fmt.Sprintf("%s/%s", req.Namespace, req.TargetSnapshotName),
-			runtime.LabelBaseSnapshotName:   fmt.Sprintf("%s/%s", req.Namespace, req.BaseSnapshotName),
+			runtime.LabelBaseSnapshotID:     req.BaseSnapshotId,
 		}
 		s.config.Runtime.RecordMetricsWithLabels(opLabel, runtime.MetadataAllocatedOperationName, startTime, err)
 	}(time.Now())
@@ -83,7 +83,7 @@ func (s *Server) getMetadataDeltaContextWithLogger(req *api.GetMetadataDeltaRequ
 		klog.LoggerWithValues(klog.Background(),
 			"op", s.OperationID("GetMetadataDelta"),
 			"namespace", req.Namespace,
-			"baseSnapshotName", req.BaseSnapshotName,
+			"baseSnapshotId", req.BaseSnapshotId,
 			"targetSnapshotName", req.TargetSnapshotName,
 			"startingOffset", req.StartingOffset,
 			"maxResults", req.MaxResults,
@@ -99,8 +99,8 @@ func (s *Server) validateGetMetadataDeltaRequest(req *api.GetMetadataDeltaReques
 		return status.Errorf(codes.InvalidArgument, msgInvalidArgumentNamespaceMissing)
 	}
 
-	if len(req.GetBaseSnapshotName()) == 0 {
-		return status.Errorf(codes.InvalidArgument, msgInvalidArgumentBaseSnapshotNameMissing)
+	if len(req.GetBaseSnapshotId()) == 0 {
+		return status.Errorf(codes.InvalidArgument, msgInvalidArgumentBaseSnapshotIdMissing)
 	}
 
 	if len(req.GetTargetSnapshotName()) == 0 {
@@ -111,17 +111,6 @@ func (s *Server) validateGetMetadataDeltaRequest(req *api.GetMetadataDeltaReques
 }
 
 func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *api.GetMetadataDeltaRequest) (*csi.GetMetadataDeltaRequest, error) {
-	vsiBase, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.BaseSnapshotName)
-	if err != nil {
-		return nil, err
-	}
-
-	if vsiBase.DriverName != s.driverName() {
-		err = status.Errorf(codes.InvalidArgument, msgInvalidArgumentSnaphotDriverInvalidFmt, req.BaseSnapshotName, s.driverName())
-		klog.FromContext(ctx).Error(err, "invalid driver")
-		return nil, err
-	}
-
 	vsiTarget, err := s.getVolSnapshotInfo(ctx, req.Namespace, req.TargetSnapshotName)
 	if err != nil {
 		return nil, err
@@ -133,19 +122,13 @@ func (s *Server) convertToCSIGetMetadataDeltaRequest(ctx context.Context, req *a
 		return nil, err
 	}
 
-	if vsiBase.SourceVolume != vsiTarget.SourceVolume {
-		klog.FromContext(ctx).Error(nil, msgInvalidArgumentDiffSnapshotSourceVolumes)
-		return nil, status.Errorf(codes.InvalidArgument, msgInvalidArgumentDiffSnapshotSourceVolumes)
-	}
-
-	// the target was created after the base so use its secrets.
 	secretsMap, err := s.getSnapshotterCredentials(ctx, vsiTarget)
 	if err != nil {
 		return nil, err
 	}
 
 	return &csi.GetMetadataDeltaRequest{
-		BaseSnapshotId:   vsiBase.SnapshotHandle,
+		BaseSnapshotId:   req.BaseSnapshotId,
 		TargetSnapshotId: vsiTarget.SnapshotHandle,
 		StartingOffset:   req.StartingOffset,
 		MaxResults:       req.MaxResults,

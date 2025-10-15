@@ -24,7 +24,7 @@ import (
 
 const (
 	LabelTargetSnapshotName = "target_snapshot"
-	LabelBaseSnapshotName   = "base_snapshot"
+	LabelBaseSnapshotID     = "base_snapshot"
 	SubSystem               = "snapshot_metadata_controller"
 
 	// MetadataAllocatedOperationName is the operation that tracks how long the controller takes to get the allocated blocks for a snapshot.
