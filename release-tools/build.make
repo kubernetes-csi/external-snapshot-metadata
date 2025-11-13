@@ -146,7 +146,7 @@ DOCKER_BUILDX_CREATE_ARGS ?=
 # BUILD_PLATFORMS determines which individual images are included in the multiarch image.
 # PULL_BASE_REF must be set to 'master', 'main', 'release-x.y', or a tag name, and determines
 # the tag for the resulting multiarch image.
-$(CMDS:%=push-multiarch-%): push-multiarch-%: check-pull-base-ref build-%
+$(CMDS:%=push-multiarch-%): push-multiarch-%: check-pull-base-ref
 	set -ex; \
 	export DOCKER_CLI_EXPERIMENTAL=enabled; \
 	docker buildx create $(DOCKER_BUILDX_CREATE_ARGS) --use --name multiarchimage-buildertest --driver-opt image=moby/buildkit:v0.10.6; \
@@ -167,7 +167,7 @@ $(CMDS:%=push-multiarch-%): push-multiarch-%: check-pull-base-ref build-%
 				--tag $(IMAGE_NAME):$$escaped_buildx_platform-$$os-$$escaped_base_image$$tag \
 				--platform=$$os/$$buildx_platform \
 				--file $$(eval echo \$${dockerfile_$$os}) \
-				--build-arg binary=./bin/$*$$suffix \
+				--build-arg LDFLAGS='$(FULL_LDFLAGS)' \
 				--build-arg ARCH=$$arch \
 				--build-arg BASE_IMAGE=$$base_image \
 				--build-arg ADDON_IMAGE=$$addon_image \
@@ -199,7 +199,7 @@ $(CMDS:%=push-multiarch-%): push-multiarch-%: check-pull-base-ref build-%
 			: "creating or overwriting canary image for release branch"; \
 			release_canary_tag=$$(echo $(PULL_BASE_REF) | cut -f2 -d '-')-canary; \
 			pushMultiArch $$release_canary_tag; \
-	elif docker pull $(IMAGE_NAME):$(PULL_BASE_REF) 2>&1 | tee /dev/stderr | grep -q "manifest for $(IMAGE_NAME):$(PULL_BASE_REF) not found"; then \
+	elif docker pull $(IMAGE_NAME):$(PULL_BASE_REF) 2>&1 | tee /dev/stderr | grep -qE "(manifest for .* not found|manifest unknown)"; then \
 			: "creating release image"; \
 			pushMultiArch $(PULL_BASE_REF); \
 	else \
