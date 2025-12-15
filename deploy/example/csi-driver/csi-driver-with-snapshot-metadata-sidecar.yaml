@@ -34,12 +34,9 @@ spec:
           # fetching the token from SnapshotMetadataService CR.
           # - "--audience=test-backup-client"
           readinessProbe:
-            exec:
-              command:
-              - "/bin/grpc_health_probe"
-              - "-addr=:50051"
-              - "-tls"
-              - "-tls-no-verify"
+            httpGet:
+              path: /health
+              port: 8080
             initialDelaySeconds: 5
           volumeMounts:
             - mountPath: /csi

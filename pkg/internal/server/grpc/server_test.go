@@ -101,7 +101,7 @@ func TestNewServer(t *testing.T) {
 		assert.NotNil(t, s.grpcServer)
 		assert.Equal(t, s.config.Runtime, &rt)
 		assert.Equal(t, expMaxStreamDur, s.config.MaxStreamDur)
-		assert.False(t, s.isReady()) // initialized to not ready
+		assert.False(t, s.IsReady()) // initialized to not ready
 
 		err = s.Start()
 		assert.NoError(t, err)
@@ -115,7 +115,7 @@ func TestNewServer(t *testing.T) {
 			assert.Contains(t, si, serviceName)
 		}
 
-		assert.False(t, s.isReady()) // not yet ready
+		assert.False(t, s.IsReady()) // not yet ready
 		err = s.isCSIDriverReady(context.Background())
 		assert.Error(t, err)
 		st, ok := status.FromError(err)
@@ -125,11 +125,11 @@ func TestNewServer(t *testing.T) {
 
 		s.CSIDriverIsReady()
 
-		assert.True(t, s.isReady()) // now ready!
+		assert.True(t, s.IsReady()) // now ready!
 		assert.NoError(t, s.isCSIDriverReady(context.Background()))
 
 		s.Stop()
-		assert.False(t, s.isReady())
+		assert.False(t, s.IsReady())
 		assert.Error(t, s.isCSIDriverReady(context.Background()))
 	})
 }
