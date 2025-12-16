@@ -29,22 +29,22 @@ func TestHealthService(t *testing.T) {
 		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
 		server := th.ServerWithRuntime(t, th.Runtime())
 
-		assert.False(t, server.isReady())
+		assert.False(t, server.IsReady())
 
 		server.setReady()
-		assert.True(t, server.isReady())
+		assert.True(t, server.IsReady())
 
 		server.setNotReady()
-		assert.False(t, server.isReady())
+		assert.False(t, server.IsReady())
 
 		server.setReady()
-		assert.True(t, server.isReady())
+		assert.True(t, server.IsReady())
 
 		server.shuttingDown()
-		assert.False(t, server.isReady())
+		assert.False(t, server.IsReady())
 
 		server.setReady()
-		assert.False(t, server.isReady()) // cannot change state once shutdown.
+		assert.False(t, server.IsReady()) // cannot change state once shutdown.
 	})
 
 	t.Run("client-health-checks", func(t *testing.T) {

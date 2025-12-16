@@ -36,8 +36,9 @@ const (
 	defaultCSISocket               = "/run/csi/socket"
 	defaultCSITimeout              = time.Minute // Default timeout of short CSI calls like GetPluginInfo.
 	defaultGRPCPort                = 50051
-	defaultHTTPEndpoint            = ""
+	defaultHTTPEndpoint            = ":8080"
 	defaultKubeAPIBurst            = 10
+	defaultHealthPath              = "/health"
 	defaultKubeAPIQPS              = 5.0
 	defaultKubeconfig              = ""
 	defaultMaxStreamingDurationMin = 10
@@ -56,6 +57,7 @@ const (
 	flagTLSKey                  = "tls-key"
 	flagVersion                 = "version"
 	flagAudience                = "audience"
+	flagDisableMetrics          = "disable-metrics"
 
 	// tlsCertEnvVar is an environment variable that specifies the path to tls certificate file.
 	tlsCertEnvVar = "TLS_CERT_PATH"
@@ -94,19 +96,32 @@ func Run(argv []string, version string) int {
 		return 1
 	}
 
-	// start listening & serving http endpoint, if set
+	// Start the HTTP server for health and metrics endpoints.
 	mux := http.NewServeMux()
-	if *s.httpEndpoint != "" {
+
+	// Always register the health endpoint - tracks gRPC server readiness.
+	mux.HandleFunc(defaultHealthPath, func(w http.ResponseWriter, r *http.Request) {
+		if grpcServer.IsReady() {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("ok"))
+		} else {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			w.Write([]byte("not ready"))
+		}
+	})
+
+	// Conditionally register metrics endpoint.
+	if !*s.disableMetrics {
 		rt.MetricsManager.RegisterToServer(mux, *s.metricsPath)
 		rt.MetricsManager.SetDriverName(rt.DriverName)
-		go func() {
-			klog.Infof("ServeMux listening at %q", *s.httpEndpoint)
-			err := http.ListenAndServe(*s.httpEndpoint, mux)
-			if err != nil {
-				klog.Fatalf("Failed to start HTTP server at specified address (%q) and metrics path (%q): %s", *s.httpEndpoint, *s.metricsPath, err)
-			}
-		}()
 	}
+
+	go func() {
+		klog.Infof("HTTP server listening at %q (health: %s, metrics: %v)", *s.httpEndpoint, defaultHealthPath, !*s.disableMetrics)
+		if err := http.ListenAndServe(*s.httpEndpoint, mux); err != nil {
+			klog.Fatalf("Failed to start HTTP server at %q: %s", *s.httpEndpoint, err)
+		}
+	}()
 
 	shutdownOnTerminationSignal(grpcServer)
 
@@ -132,6 +147,7 @@ type sidecarFlagSet struct {
 	tlsCert            *string
 	tlsKey             *string
 	audience           *string
+	disableMetrics     *bool
 }
 
 var sidecarFlagSetErrorHandling flag.ErrorHandling = flag.ExitOnError // UT interception point.
@@ -159,8 +175,9 @@ func newSidecarFlagSet(name, version string) *sidecarFlagSet {
 	s.kubeAPIBurst = s.Int(flagKubeAPIBurst, defaultKubeAPIBurst, "Burst to use while communicating with the kubernetes apiserver. Defaults to 10.")
 
 	s.httpEndpoint = s.String(flagHTTPEndpoint, defaultHTTPEndpoint,
-		"The TCP network address where the HTTP server for diagnostics, including metrics and leader election health check, will listen (example: `:8080`). The default is empty string, which means the server is disabled.")
+		"The TCP network address where the HTTP server for diagnostics, including health check and metrics, will listen. Defaults to "+defaultHTTPEndpoint+".")
 	s.metricsPath = s.String(flagMetricsPath, defaultMetricsPath, "The HTTP path where prometheus metrics will be exposed. Defaults to "+defaultMetricsPath+".")
+	s.disableMetrics = s.Bool(flagDisableMetrics, false, "Disable the metrics endpoint. The health endpoint will still be available.")
 
 	// K8s logging initialization
 	klog.InitFlags(s.FlagSet)
@@ -237,7 +254,7 @@ func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []
 		argv = append(argv, "-"+flagKubeAPIQPS, strconv.FormatFloat(float64(rta.KubeAPIQPS), 'f', -1, 32))
 	}
 
-	if rta.HttpEndpoint != "" {
+	if rta.HttpEndpoint != defaultHTTPEndpoint {
 		argv = append(argv, "-"+flagHTTPEndpoint, rta.HttpEndpoint)
 	}
 

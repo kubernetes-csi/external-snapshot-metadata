@@ -112,6 +112,7 @@ func TestSidecarFlagSet(t *testing.T) {
 			GRPCPort:     defaultGRPCPort,
 			TLSCertFile:  expTLSCertFile,
 			TLSKeyFile:   expTLSKeyFile,
+			HttpEndpoint: defaultHTTPEndpoint,
 			MetricsPath:  defaultMetricsPath,
 		}
 

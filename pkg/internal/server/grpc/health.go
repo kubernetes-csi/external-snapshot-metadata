@@ -33,8 +33,8 @@ func newHealthServer() *health.Server {
 	return healthServer
 }
 
-// isReady indicates whether the sidecar can serve metadata.
-func (s *Server) isReady() bool {
+// IsReady indicates whether the sidecar can serve metadata.
+func (s *Server) IsReady() bool {
 	resp, err := s.healthServer.Check(context.Background(), &healthpb.HealthCheckRequest{})
 	if err == nil && resp.Status == healthpb.HealthCheckResponse_SERVING {
 		return true
@@ -63,7 +63,7 @@ func (s *Server) shuttingDown() {
 // isCSIDriverReady is a helper for the handlers that returns the appropriate error if the
 // CSI driver is not ready.
 func (s *Server) isCSIDriverReady(ctx context.Context) error {
-	if s.isReady() {
+	if s.IsReady() {
 		return nil
 	}
 
