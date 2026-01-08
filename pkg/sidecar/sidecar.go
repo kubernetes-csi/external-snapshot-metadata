@@ -17,6 +17,7 @@ limitations under the License.
 package sidecar
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"net/http"
@@ -26,6 +27,7 @@ import (
 	"syscall"
 	"time"
 
+	cw "github.com/kubernetes-csi/external-snapshotter/v8/pkg/webhook"
 	"k8s.io/klog/v2"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
@@ -90,7 +92,17 @@ func Run(argv []string, version string) int {
 
 	klog.Infof("CSI driver name: %q", rt.DriverName)
 
-	grpcServer, err := startGRPCServerAndValidateCSIDriver(s.createServerConfig(rt))
+	// Setup a certificate watcher
+	ctx, cancel := context.WithCancel(context.TODO())
+	defer cancel()
+
+	cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+	if err != nil {
+		klog.Errorf("failed to start certwatcher: %v", err)
+		return 1
+	}
+
+	grpcServer, err := startGRPCServerAndValidateCSIDriver(s.createServerConfig(rt, cw))
 	if err != nil {
 		klog.Error(err)
 		return 1
@@ -120,6 +132,13 @@ func Run(argv []string, version string) int {
 		klog.Infof("HTTP server listening at %q (health: %s, metrics: %v)", *s.httpEndpoint, defaultHealthPath, !*s.disableMetrics)
 		if err := http.ListenAndServe(*s.httpEndpoint, mux); err != nil {
 			klog.Fatalf("Failed to start HTTP server at %q: %s", *s.httpEndpoint, err)
+		}
+	}()
+
+	// Dispatch the go routine for certificate watcher
+	go func() {
+		if err := cw.Start(ctx); err != nil {
+			klog.Errorf("error in certificate watcher: %v", err)
 		}
 	}()
 
@@ -265,10 +284,11 @@ func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []
 	return argv
 }
 
-func (s *sidecarFlagSet) createServerConfig(rt *runtime.Runtime) grpc.ServerConfig {
+func (s *sidecarFlagSet) createServerConfig(rt *runtime.Runtime, cw *cw.CertWatcher) grpc.ServerConfig {
 	return grpc.ServerConfig{
 		Runtime:      rt,
 		MaxStreamDur: time.Duration(*s.maxStreamingDurMin) * time.Minute,
+		Certwatcher:  cw,
 	}
 }
 
