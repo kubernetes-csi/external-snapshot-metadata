@@ -31,6 +31,7 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	cw "github.com/kubernetes-csi/external-snapshotter/v8/pkg/webhook"
 	"github.com/stretchr/testify/assert"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
@@ -119,7 +120,7 @@ func TestSidecarFlagSet(t *testing.T) {
 		assert.Equal(t, expRTA, rta)
 
 		rt := &runtime.Runtime{}
-		config := sfs.createServerConfig(rt)
+		config := sfs.createServerConfig(rt, nil)
 		assert.Equal(t, rt, config.Runtime)
 		assert.Equal(t, time.Duration(defaultMaxStreamingDurationMin)*time.Minute, config.MaxStreamDur)
 	})
@@ -157,7 +158,7 @@ func TestSidecarFlagSet(t *testing.T) {
 		assert.Equal(t, expRTA, rta)
 
 		rt := &runtime.Runtime{}
-		config := sfs.createServerConfig(rt)
+		config := sfs.createServerConfig(rt, nil)
 		assert.Equal(t, rt, config.Runtime)
 		assert.Equal(t, time.Duration(defaultMaxStreamingDurationMin)*time.Minute, config.MaxStreamDur)
 	})
@@ -188,9 +189,15 @@ func TestStartGRPCServerAndValidateCSIDriver(t *testing.T) {
 
 		rt := rth.RuntimeForFakeCSIDriver(t)
 
+		rt.TLSCertFile = rth.RuntimeArgs().TLSCertFile
+		rt.TLSKeyFile = rth.RuntimeArgs().TLSKeyFile
 		rt.GRPCPort = -1 // invalid port
 
-		s, err := startGRPCServerAndValidateCSIDriver(grpc.ServerConfig{Runtime: rt})
+		cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+		assert.NoError(t, err)
+		assert.NotNil(t, cw)
+
+		s, err := startGRPCServerAndValidateCSIDriver(grpc.ServerConfig{Runtime: rt, Certwatcher: cw})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "invalid port")
 		assert.Nil(t, s)
@@ -204,7 +211,14 @@ func TestStartGRPCServerAndValidateCSIDriver(t *testing.T) {
 
 		rt := rth.RuntimeForFakeCSIDriver(t)
 
-		s, err := startGRPCServerAndValidateCSIDriver(grpc.ServerConfig{Runtime: rt})
+		rt.TLSCertFile = rth.RuntimeArgs().TLSCertFile
+		rt.TLSKeyFile = rth.RuntimeArgs().TLSKeyFile
+
+		cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+		assert.NoError(t, err)
+		assert.NotNil(t, cw)
+
+		s, err := startGRPCServerAndValidateCSIDriver(grpc.ServerConfig{Runtime: rt, Certwatcher: cw})
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "error waiting for CSI driver to become ready") // probe unimplemented.
 		assert.Nil(t, s)
