@@ -18,6 +18,7 @@ package grpc
 
 import (
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net"
 	"strconv"
@@ -26,6 +27,7 @@ import (
 	"time"
 
 	snapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned"
+	cw "github.com/kubernetes-csi/external-snapshotter/v8/pkg/webhook"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
 	"google.golang.org/grpc/health"
@@ -53,6 +55,8 @@ type ServerConfig struct {
 	// the client do not complete in this time.
 	// If not set then HandlerDefaultMaxStreamDuration is used.
 	MaxStreamDur time.Duration
+
+	Certwatcher *cw.CertWatcher
 }
 
 type Server struct {
@@ -65,18 +69,26 @@ type Server struct {
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
-	options, err := buildOptions(config)
-	if err != nil {
-		return nil, err
-	}
-
 	if config.MaxStreamDur <= 0 {
 		config.MaxStreamDur = HandlerDefaultMaxStreamDuration
 	}
 
+	if config.Certwatcher == nil {
+		return nil, errors.New("the certificate watcher/provider for the gRPC server is unset.")
+	}
+
 	return &Server{
-		config:       config,
-		grpcServer:   grpc.NewServer(options...),
+		config: config,
+		grpcServer: grpc.NewServer(
+			grpc.Creds(
+				credentials.NewTLS(
+					&tls.Config{
+						GetCertificate: config.Certwatcher.GetCertificate,
+						ClientAuth:     tls.NoClientCert,
+					},
+				),
+			),
+		),
 		healthServer: newHealthServer(),
 	}, nil
 }
@@ -103,31 +115,6 @@ func (s *Server) csiConnection() *grpc.ClientConn {
 
 func (s *Server) audience() string {
 	return s.config.Runtime.Audience
-}
-
-func buildOptions(config ServerConfig) ([]grpc.ServerOption, error) {
-	tlsOptions, err := buildTLSOption(config.Runtime.TLSCertFile, config.Runtime.TLSKeyFile)
-	if err != nil {
-		return nil, err
-	}
-
-	return []grpc.ServerOption{
-		tlsOptions,
-	}, nil
-}
-
-func buildTLSOption(cert, key string) (grpc.ServerOption, error) {
-	serverCert, err := tls.LoadX509KeyPair(cert, key)
-	if err != nil {
-		return nil, fmt.Errorf("failed to load tls certificates: %v", err)
-	}
-
-	config := &tls.Config{
-		Certificates: []tls.Certificate{serverCert},
-		ClientAuth:   tls.NoClientCert,
-	}
-
-	return grpc.Creds(credentials.NewTLS(config)), nil
 }
 
 // Start start the gRPC server in its own goroutine.
