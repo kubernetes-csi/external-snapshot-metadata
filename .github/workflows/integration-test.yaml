@@ -62,8 +62,8 @@ jobs:
           kubectl create serviceaccount backup-app-service-account
           kubectl create clusterrolebinding csi-client-cluster-role-binding --clusterrole=external-snapshot-metadata-client-runner --serviceaccount=default:backup-app-service-account
 
-          go build -o snapshot-metadata-lister ./examples/snapshot-metadata-lister/main.go
-          go build -o snapshot-metadata-verifier ./examples/snapshot-metadata-verifier/main.go
+          go build -o snapshot-metadata-lister ./tools/snapshot-metadata-lister/main.go
+          go build -o snapshot-metadata-verifier ./tools/snapshot-metadata-verifier/main.go
 
           ./snapshot-metadata-lister -h
 
