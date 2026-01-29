@@ -50,6 +50,10 @@ jobs:
 
           kubectl apply -f ./deploy/example/csi-driver/testdata/
 
+          echo "Restart CSI driver pods to reload the new TLS certificates from testdata"
+          kubectl delete po -l app.kubernetes.io/name=csi-hostpathplugin
+
+          kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=csi-hostpathplugin --timeout=300s
           kubectl wait --for=condition=Ready pod -l app.kubernetes.io/name=csi-hostpath-socat --timeout=300s
 
       - name: Deploy backup client app resources
