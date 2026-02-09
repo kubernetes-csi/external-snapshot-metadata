@@ -34,9 +34,16 @@ func TestAuthenticate(t *testing.T) {
 	ctx := context.Background()
 	userInfo := &authv1.UserInfo{
 		Username: "user-a",
+		Groups:   []string{"group-1", "group-2"},
+		UID:      "uid-123",
+		Extra: map[string]authv1.ExtraValue{
+			"extra-key": {"extra-value"},
+		},
 	}
+	namespace := "test-namespace"
+
 	for _, tc := range []struct {
-		allowed          string
+		name             string
 		reactor          clientgotesting.ReactionFunc
 		expectedDecision authorizer.Decision
 		expectedReason   string
@@ -44,7 +51,29 @@ func TestAuthenticate(t *testing.T) {
 	}{
 		// authorized user
 		{
+			name: "authorized user",
 			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				// Introspect the request to validate correct arguments
+				createAction := action.(clientgotesting.CreateAction)
+				sar := createAction.GetObject().(*authzv1.SubjectAccessReview)
+
+				// Validate user information
+				assert.Equal(t, userInfo.Username, sar.Spec.User, "username should match")
+				assert.Equal(t, userInfo.Groups, sar.Spec.Groups, "groups should match")
+				assert.Equal(t, userInfo.UID, sar.Spec.UID, "UID should match")
+				assert.Equal(t, len(userInfo.Extra), len(sar.Spec.Extra), "extra fields count should match")
+				for k, v := range userInfo.Extra {
+					assert.Equal(t, authzv1.ExtraValue(v), sar.Spec.Extra[k], "extra value should match")
+				}
+
+				// Validate resource attributes
+				assert.NotNil(t, sar.Spec.ResourceAttributes, "resource attributes should be set")
+				assert.Equal(t, "get", sar.Spec.ResourceAttributes.Verb, "verb should be 'get'")
+				assert.Equal(t, namespace, sar.Spec.ResourceAttributes.Namespace, "namespace should match")
+				assert.Equal(t, "snapshot.storage.k8s.io", sar.Spec.ResourceAttributes.Group, "group should be 'snapshot.storage.k8s.io'")
+				assert.Equal(t, "v1", sar.Spec.ResourceAttributes.Version, "version should be 'v1'")
+				assert.Equal(t, "volumesnapshots", sar.Spec.ResourceAttributes.Resource, "resource should be 'volumesnapshots'")
+
 				response := &authzv1.SubjectAccessReview{
 					Status: authzv1.SubjectAccessReviewStatus{
 						Allowed: true,
@@ -59,7 +88,16 @@ func TestAuthenticate(t *testing.T) {
 		},
 		// unauthorized user
 		{
+			name: "unauthorized user",
 			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				// Introspect the request
+				createAction := action.(clientgotesting.CreateAction)
+				sar := createAction.GetObject().(*authzv1.SubjectAccessReview)
+
+				// Validate request structure
+				assert.Equal(t, userInfo.Username, sar.Spec.User, "username should match")
+				assert.NotNil(t, sar.Spec.ResourceAttributes, "resource attributes should be set")
+
 				response := &authzv1.SubjectAccessReview{
 					Status: authzv1.SubjectAccessReviewStatus{
 						Allowed: false,
@@ -74,24 +112,27 @@ func TestAuthenticate(t *testing.T) {
 		},
 		// error in authorization
 		{
+			name: "error in authorization",
 			reactor: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				return true, nil, errors.New("failed to create SubjectAccessReview")
 			},
 			expectedDecision: authorizer.DecisionDeny,
-			expectedReason:   "mock reason",
+			expectedReason:   "",
 			errExpected:      true,
 		},
 	} {
-		fakeClientset := fake.NewSimpleClientset()
-		fakeClientset.PrependReactor("create", "subjectaccessreviews", tc.reactor)
-		authz := NewSARAuthorizer(fakeClientset)
-		decision, reason, err := authz.Authorize(ctx, userInfo, "default")
-		if tc.errExpected {
-			assert.NotNil(t, err)
-		} else {
-			assert.Nil(t, err)
-			assert.Equal(t, tc.expectedDecision, decision)
-			assert.Equal(t, tc.expectedReason, reason)
-		}
+		t.Run(tc.name, func(t *testing.T) {
+			fakeClientset := fake.NewSimpleClientset()
+			fakeClientset.PrependReactor("create", "subjectaccessreviews", tc.reactor)
+			authz := NewSARAuthorizer(fakeClientset)
+			decision, reason, err := authz.Authorize(ctx, userInfo, namespace)
+			if tc.errExpected {
+				assert.NotNil(t, err)
+			} else {
+				assert.Nil(t, err)
+				assert.Equal(t, tc.expectedDecision, decision)
+				assert.Equal(t, tc.expectedReason, reason)
+			}
+		})
 	}
 }
