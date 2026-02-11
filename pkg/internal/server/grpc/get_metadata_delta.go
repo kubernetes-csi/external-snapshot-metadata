@@ -33,6 +33,8 @@ import (
 )
 
 func (s *Server) GetMetadataDelta(req *api.GetMetadataDeltaRequest, stream api.SnapshotMetadata_GetMetadataDeltaServer) (err error) {
+	applyMetadataToGetMetadataDeltaRequest(stream.Context(), req)
+
 	// Create a timeout context so that failure in either sending to the client or
 	// receiving from the CSI driver will ultimately abort the handler session.
 	// The context could also get canceled by the client.
