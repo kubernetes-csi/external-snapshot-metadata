@@ -1,6 +1,6 @@
 module github.com/kubernetes-csi/external-snapshot-metadata/tools/snapshot-metadata-verifier
 
-go 1.25.0
+go 1.25.7
 
 require (
 	github.com/kubernetes-csi/external-snapshot-metadata v0.2.0
