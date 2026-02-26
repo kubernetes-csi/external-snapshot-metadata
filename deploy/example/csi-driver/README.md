@@ -55,9 +55,10 @@ In this example, we will deploy the snapshot-metadata service alongside a CSI Ho
    The name of the `SnapshotMetadataService` resource must match the name of the CSI driver for which you want to enable the CBT feature. In this example, we will create a `SnapshotMetadataService` for the `hostpath.csi.k8s.io` CSI driver.
 
    Create a file named `snapshotmetadataservice.yaml` with the following content:
+   (v1alpha1 is deprecated but still served for backward compatibility.)
 
    ```yaml
-   apiVersion: cbt.storage.k8s.io/v1alpha1
+   apiVersion: cbt.storage.k8s.io/v1beta1
    kind: SnapshotMetadataService
    metadata:
      name: hostpath.csi.k8s.io
