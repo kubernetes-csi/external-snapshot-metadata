@@ -32,7 +32,7 @@ import (
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes/fake"
 
-	smsCRv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
+	smsCRv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
 	fakeSmsCR "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/fake"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
@@ -74,7 +74,7 @@ type testHarness struct {
 	RetGetCSIDriverFromPrimarySnapshotErr error
 
 	InGetSnapshotMetadataServiceCRCSIDriver string
-	RetGetSnapshotMetadataServiceCRService  *smsCRv1alpha1.SnapshotMetadataService
+	RetGetSnapshotMetadataServiceCRService  *smsCRv1beta1.SnapshotMetadataService
 	RetGetSnapshotMetadataServiceCRErr      error
 
 	InCreateSecurityTokenSAName      string
@@ -156,12 +156,12 @@ func (th *testHarness) Args() Args {
 	}
 }
 
-func (th *testHarness) FakeCR() *smsCRv1alpha1.SnapshotMetadataService {
-	return &smsCRv1alpha1.SnapshotMetadataService{
+func (th *testHarness) FakeCR() *smsCRv1beta1.SnapshotMetadataService {
+	return &smsCRv1beta1.SnapshotMetadataService{
 		ObjectMeta: apimetav1.ObjectMeta{
 			Name: th.CSIDriver,
 		},
-		Spec: smsCRv1alpha1.SnapshotMetadataServiceSpec{
+		Spec: smsCRv1beta1.SnapshotMetadataServiceSpec{
 			Audience: th.Audience,
 			Address:  th.Address,
 			CACert:   th.CACert,

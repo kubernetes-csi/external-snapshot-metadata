@@ -43,7 +43,7 @@ Update generated client code in external-snapshot-metadata
     ./hack/update-generated-code.sh
 ``` 
 
-Once you run the script, the code will be generated for snapshotmetadataservice:v1alpha1, and you will get an output as follows:
+Once you run the script, the code will be generated for snapshotmetadataservice:v1alpha1 and snapshotmetadataservice:v1beta1, and you will get an output as follows:
     
 ```bash
 Generating deepcopy code for 1 targets
