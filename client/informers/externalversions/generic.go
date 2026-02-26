@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,9 +19,10 @@ limitations under the License.
 package externalversions
 
 import (
-	"fmt"
+	fmt "fmt"
 
 	v1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
+	v1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -55,6 +56,10 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=cbt.storage.k8s.io, Version=v1alpha1
 	case v1alpha1.SchemeGroupVersion.WithResource("snapshotmetadataservices"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Cbt().V1alpha1().SnapshotMetadataServices().Informer()}, nil
+
+		// Group=cbt.storage.k8s.io, Version=v1beta1
+	case v1beta1.SchemeGroupVersion.WithResource("snapshotmetadataservices"):
+		return &genericInformer{resource: resource.GroupResource(), informer: f.Cbt().V1beta1().SnapshotMetadataServices().Informer()}, nil
 
 	}
 
