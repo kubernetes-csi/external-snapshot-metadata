@@ -74,7 +74,7 @@ func (s *Server) getAudienceForDriver(ctx context.Context) (string, error) {
 		return audience, nil
 	}
 
-	sms, err := s.cbtClient().CbtV1alpha1().SnapshotMetadataServices().Get(ctx, s.driverName(), apimetav1.GetOptions{})
+	sms, err := s.cbtClient().CbtV1beta1().SnapshotMetadataServices().Get(ctx, s.driverName(), apimetav1.GetOptions{})
 	if err != nil {
 		klog.FromContext(ctx).Error(err, msgInternalFailedToFindCR, "driver", s.driverName())
 		return "", fmt.Errorf(msgInternalFailedToFindCRFmt, s.driverName(), err)
