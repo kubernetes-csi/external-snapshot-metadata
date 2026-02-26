@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,108 +19,34 @@ limitations under the License.
 package fake
 
 import (
-	"context"
-
 	v1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
-	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	types "k8s.io/apimachinery/pkg/types"
-	watch "k8s.io/apimachinery/pkg/watch"
-	testing "k8s.io/client-go/testing"
+	snapshotmetadataservicev1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1alpha1"
+	gentype "k8s.io/client-go/gentype"
 )
 
-// FakeSnapshotMetadataServices implements SnapshotMetadataServiceInterface
-type FakeSnapshotMetadataServices struct {
+// fakeSnapshotMetadataServices implements SnapshotMetadataServiceInterface
+type fakeSnapshotMetadataServices struct {
+	*gentype.FakeClientWithList[*v1alpha1.SnapshotMetadataService, *v1alpha1.SnapshotMetadataServiceList]
 	Fake *FakeCbtV1alpha1
 }
 
-var snapshotmetadataservicesResource = v1alpha1.SchemeGroupVersion.WithResource("snapshotmetadataservices")
-
-var snapshotmetadataservicesKind = v1alpha1.SchemeGroupVersion.WithKind("SnapshotMetadataService")
-
-// Get takes name of the snapshotMetadataService, and returns the corresponding snapshotMetadataService object, and an error if there is any.
-func (c *FakeSnapshotMetadataServices) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1alpha1.SnapshotMetadataService, err error) {
-	emptyResult := &v1alpha1.SnapshotMetadataService{}
-	obj, err := c.Fake.
-		Invokes(testing.NewRootGetAction(snapshotmetadataservicesResource, name), emptyResult)
-	if obj == nil {
-		return emptyResult, err
+func newFakeSnapshotMetadataServices(fake *FakeCbtV1alpha1) snapshotmetadataservicev1alpha1.SnapshotMetadataServiceInterface {
+	return &fakeSnapshotMetadataServices{
+		gentype.NewFakeClientWithList[*v1alpha1.SnapshotMetadataService, *v1alpha1.SnapshotMetadataServiceList](
+			fake.Fake,
+			"",
+			v1alpha1.SchemeGroupVersion.WithResource("snapshotmetadataservices"),
+			v1alpha1.SchemeGroupVersion.WithKind("SnapshotMetadataService"),
+			func() *v1alpha1.SnapshotMetadataService { return &v1alpha1.SnapshotMetadataService{} },
+			func() *v1alpha1.SnapshotMetadataServiceList { return &v1alpha1.SnapshotMetadataServiceList{} },
+			func(dst, src *v1alpha1.SnapshotMetadataServiceList) { dst.ListMeta = src.ListMeta },
+			func(list *v1alpha1.SnapshotMetadataServiceList) []*v1alpha1.SnapshotMetadataService {
+				return gentype.ToPointerSlice(list.Items)
+			},
+			func(list *v1alpha1.SnapshotMetadataServiceList, items []*v1alpha1.SnapshotMetadataService) {
+				list.Items = gentype.FromPointerSlice(items)
+			},
+		),
+		fake,
 	}
-	return obj.(*v1alpha1.SnapshotMetadataService), err
-}
-
-// List takes label and field selectors, and returns the list of SnapshotMetadataServices that match those selectors.
-func (c *FakeSnapshotMetadataServices) List(ctx context.Context, opts v1.ListOptions) (result *v1alpha1.SnapshotMetadataServiceList, err error) {
-	emptyResult := &v1alpha1.SnapshotMetadataServiceList{}
-	obj, err := c.Fake.
-		Invokes(testing.NewRootListAction(snapshotmetadataservicesResource, snapshotmetadataservicesKind, opts), emptyResult)
-	if obj == nil {
-		return emptyResult, err
-	}
-
-	label, _, _ := testing.ExtractFromListOptions(opts)
-	if label == nil {
-		label = labels.Everything()
-	}
-	list := &v1alpha1.SnapshotMetadataServiceList{ListMeta: obj.(*v1alpha1.SnapshotMetadataServiceList).ListMeta}
-	for _, item := range obj.(*v1alpha1.SnapshotMetadataServiceList).Items {
-		if label.Matches(labels.Set(item.Labels)) {
-			list.Items = append(list.Items, item)
-		}
-	}
-	return list, err
-}
-
-// Watch returns a watch.Interface that watches the requested snapshotMetadataServices.
-func (c *FakeSnapshotMetadataServices) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-	return c.Fake.
-		InvokesWatch(testing.NewRootWatchAction(snapshotmetadataservicesResource, opts))
-}
-
-// Create takes the representation of a snapshotMetadataService and creates it.  Returns the server's representation of the snapshotMetadataService, and an error, if there is any.
-func (c *FakeSnapshotMetadataServices) Create(ctx context.Context, snapshotMetadataService *v1alpha1.SnapshotMetadataService, opts v1.CreateOptions) (result *v1alpha1.SnapshotMetadataService, err error) {
-	emptyResult := &v1alpha1.SnapshotMetadataService{}
-	obj, err := c.Fake.
-		Invokes(testing.NewRootCreateAction(snapshotmetadataservicesResource, snapshotMetadataService), emptyResult)
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1alpha1.SnapshotMetadataService), err
-}
-
-// Update takes the representation of a snapshotMetadataService and updates it. Returns the server's representation of the snapshotMetadataService, and an error, if there is any.
-func (c *FakeSnapshotMetadataServices) Update(ctx context.Context, snapshotMetadataService *v1alpha1.SnapshotMetadataService, opts v1.UpdateOptions) (result *v1alpha1.SnapshotMetadataService, err error) {
-	emptyResult := &v1alpha1.SnapshotMetadataService{}
-	obj, err := c.Fake.
-		Invokes(testing.NewRootUpdateAction(snapshotmetadataservicesResource, snapshotMetadataService), emptyResult)
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1alpha1.SnapshotMetadataService), err
-}
-
-// Delete takes name of the snapshotMetadataService and deletes it. Returns an error if one occurs.
-func (c *FakeSnapshotMetadataServices) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
-	_, err := c.Fake.
-		Invokes(testing.NewRootDeleteActionWithOptions(snapshotmetadataservicesResource, name, opts), &v1alpha1.SnapshotMetadataService{})
-	return err
-}
-
-// DeleteCollection deletes a collection of objects.
-func (c *FakeSnapshotMetadataServices) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
-	action := testing.NewRootDeleteCollectionAction(snapshotmetadataservicesResource, listOpts)
-
-	_, err := c.Fake.Invokes(action, &v1alpha1.SnapshotMetadataServiceList{})
-	return err
-}
-
-// Patch applies the patch and returns the patched snapshotMetadataService.
-func (c *FakeSnapshotMetadataServices) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1alpha1.SnapshotMetadataService, err error) {
-	emptyResult := &v1alpha1.SnapshotMetadataService{}
-	obj, err := c.Fake.
-		Invokes(testing.NewRootPatchSubresourceAction(snapshotmetadataservicesResource, name, pt, data, subresources...), emptyResult)
-	if obj == nil {
-		return emptyResult, err
-	}
-	return obj.(*v1alpha1.SnapshotMetadataService), err
 }
