@@ -287,7 +287,7 @@ func (th *testHarness) getCSIDriverFromPrimarySnapshot(ctx context.Context) (str
 	return th.RetGetCSIDriverFromPrimarySnapshot, th.RetGetCSIDriverFromPrimarySnapshotErr
 }
 
-func (th *testHarness) getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error) {
+func (th *testHarness) getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1beta1.SnapshotMetadataService, error) {
 	th.InGetSnapshotMetadataServiceCRCSIDriver = csiDriver
 	return th.RetGetSnapshotMetadataServiceCRService, th.RetGetSnapshotMetadataServiceCRErr
 }
