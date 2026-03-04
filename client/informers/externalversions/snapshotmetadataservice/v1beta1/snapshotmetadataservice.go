@@ -19,16 +19,15 @@ limitations under the License.
 package v1beta1
 
 import (
-	context "context"
+	"context"
 	time "time"
 
-	apissnapshotmetadataservicev1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
+	snapshotmetadataservicev1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
 	versioned "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	internalinterfaces "github.com/kubernetes-csi/external-snapshot-metadata/client/informers/externalversions/internalinterfaces"
-	snapshotmetadataservicev1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/listers/snapshotmetadataservice/v1beta1"
+	v1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/listers/snapshotmetadataservice/v1beta1"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	runtime "k8s.io/apimachinery/pkg/runtime"
-	schema "k8s.io/apimachinery/pkg/runtime/schema"
 	watch "k8s.io/apimachinery/pkg/watch"
 	cache "k8s.io/client-go/tools/cache"
 )
@@ -37,7 +36,7 @@ import (
 // SnapshotMetadataServices.
 type SnapshotMetadataServiceInformer interface {
 	Informer() cache.SharedIndexInformer
-	Lister() snapshotmetadataservicev1beta1.SnapshotMetadataServiceLister
+	Lister() v1beta1.SnapshotMetadataServiceLister
 }
 
 type snapshotMetadataServiceInformer struct {
@@ -49,67 +48,42 @@ type snapshotMetadataServiceInformer struct {
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewSnapshotMetadataServiceInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers) cache.SharedIndexInformer {
-	return NewSnapshotMetadataServiceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers})
+	return NewFilteredSnapshotMetadataServiceInformer(client, resyncPeriod, indexers, nil)
 }
 
 // NewFilteredSnapshotMetadataServiceInformer constructs a new informer for SnapshotMetadataService type.
 // Always prefer using an informer factory to get a shared informer instead of getting an independent
 // one. This reduces memory footprint and number of connections to the server.
 func NewFilteredSnapshotMetadataServiceInformer(client versioned.Interface, resyncPeriod time.Duration, indexers cache.Indexers, tweakListOptions internalinterfaces.TweakListOptionsFunc) cache.SharedIndexInformer {
-	return NewSnapshotMetadataServiceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: indexers, TweakListOptions: tweakListOptions})
-}
-
-// NewSnapshotMetadataServiceInformerWithOptions constructs a new informer for SnapshotMetadataService type with additional options.
-// Always prefer using an informer factory to get a shared informer instead of getting an independent
-// one. This reduces memory footprint and number of connections to the server.
-func NewSnapshotMetadataServiceInformerWithOptions(client versioned.Interface, options internalinterfaces.InformerOptions) cache.SharedIndexInformer {
-	gvr := schema.GroupVersionResource{Group: "cbt.storage.k8s.io", Version: "v1beta1", Resource: "snapshotmetadataservices"}
-	identifier := options.InformerName.WithResource(gvr)
-	tweakListOptions := options.TweakListOptions
-	return cache.NewSharedIndexInformerWithOptions(
-		cache.ToListWatcherWithWatchListSemantics(&cache.ListWatch{
-			ListFunc: func(opts v1.ListOptions) (runtime.Object, error) {
+	return cache.NewSharedIndexInformer(
+		&cache.ListWatch{
+			ListFunc: func(options v1.ListOptions) (runtime.Object, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&opts)
+					tweakListOptions(&options)
 				}
-				return client.CbtV1beta1().SnapshotMetadataServices().List(context.Background(), opts)
+				return client.CbtV1beta1().SnapshotMetadataServices().List(context.TODO(), options)
 			},
-			WatchFunc: func(opts v1.ListOptions) (watch.Interface, error) {
+			WatchFunc: func(options v1.ListOptions) (watch.Interface, error) {
 				if tweakListOptions != nil {
-					tweakListOptions(&opts)
+					tweakListOptions(&options)
 				}
-				return client.CbtV1beta1().SnapshotMetadataServices().Watch(context.Background(), opts)
+				return client.CbtV1beta1().SnapshotMetadataServices().Watch(context.TODO(), options)
 			},
-			ListWithContextFunc: func(ctx context.Context, opts v1.ListOptions) (runtime.Object, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&opts)
-				}
-				return client.CbtV1beta1().SnapshotMetadataServices().List(ctx, opts)
-			},
-			WatchFuncWithContext: func(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
-				if tweakListOptions != nil {
-					tweakListOptions(&opts)
-				}
-				return client.CbtV1beta1().SnapshotMetadataServices().Watch(ctx, opts)
-			},
-		}, client),
-		&apissnapshotmetadataservicev1beta1.SnapshotMetadataService{},
-		cache.SharedIndexInformerOptions{
-			ResyncPeriod: options.ResyncPeriod,
-			Indexers:     options.Indexers,
-			Identifier:   identifier,
 		},
+		&snapshotmetadataservicev1beta1.SnapshotMetadataService{},
+		resyncPeriod,
+		indexers,
 	)
 }
 
 func (f *snapshotMetadataServiceInformer) defaultInformer(client versioned.Interface, resyncPeriod time.Duration) cache.SharedIndexInformer {
-	return NewSnapshotMetadataServiceInformerWithOptions(client, internalinterfaces.InformerOptions{ResyncPeriod: resyncPeriod, Indexers: cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, InformerName: f.factory.InformerName(), TweakListOptions: f.tweakListOptions})
+	return NewFilteredSnapshotMetadataServiceInformer(client, resyncPeriod, cache.Indexers{cache.NamespaceIndex: cache.MetaNamespaceIndexFunc}, f.tweakListOptions)
 }
 
 func (f *snapshotMetadataServiceInformer) Informer() cache.SharedIndexInformer {
-	return f.factory.InformerFor(&apissnapshotmetadataservicev1beta1.SnapshotMetadataService{}, f.defaultInformer)
+	return f.factory.InformerFor(&snapshotmetadataservicev1beta1.SnapshotMetadataService{}, f.defaultInformer)
 }
 
-func (f *snapshotMetadataServiceInformer) Lister() snapshotmetadataservicev1beta1.SnapshotMetadataServiceLister {
-	return snapshotmetadataservicev1beta1.NewSnapshotMetadataServiceLister(f.Informer().GetIndexer())
+func (f *snapshotMetadataServiceInformer) Lister() v1beta1.SnapshotMetadataServiceLister {
+	return v1beta1.NewSnapshotMetadataServiceLister(f.Informer().GetIndexer())
 }
