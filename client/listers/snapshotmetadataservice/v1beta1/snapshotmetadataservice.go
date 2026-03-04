@@ -19,10 +19,10 @@ limitations under the License.
 package v1beta1
 
 import (
-	snapshotmetadataservicev1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
-	labels "k8s.io/apimachinery/pkg/labels"
-	listers "k8s.io/client-go/listers"
-	cache "k8s.io/client-go/tools/cache"
+	v1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
+	"k8s.io/apimachinery/pkg/api/errors"
+	"k8s.io/apimachinery/pkg/labels"
+	"k8s.io/client-go/tools/cache"
 )
 
 // SnapshotMetadataServiceLister helps list SnapshotMetadataServices.
@@ -30,19 +30,39 @@ import (
 type SnapshotMetadataServiceLister interface {
 	// List lists all SnapshotMetadataServices in the indexer.
 	// Objects returned here must be treated as read-only.
-	List(selector labels.Selector) (ret []*snapshotmetadataservicev1beta1.SnapshotMetadataService, err error)
+	List(selector labels.Selector) (ret []*v1beta1.SnapshotMetadataService, err error)
 	// Get retrieves the SnapshotMetadataService from the index for a given name.
 	// Objects returned here must be treated as read-only.
-	Get(name string) (*snapshotmetadataservicev1beta1.SnapshotMetadataService, error)
+	Get(name string) (*v1beta1.SnapshotMetadataService, error)
 	SnapshotMetadataServiceListerExpansion
 }
 
 // snapshotMetadataServiceLister implements the SnapshotMetadataServiceLister interface.
 type snapshotMetadataServiceLister struct {
-	listers.ResourceIndexer[*snapshotmetadataservicev1beta1.SnapshotMetadataService]
+	indexer cache.Indexer
 }
 
 // NewSnapshotMetadataServiceLister returns a new SnapshotMetadataServiceLister.
 func NewSnapshotMetadataServiceLister(indexer cache.Indexer) SnapshotMetadataServiceLister {
-	return &snapshotMetadataServiceLister{listers.New[*snapshotmetadataservicev1beta1.SnapshotMetadataService](indexer, snapshotmetadataservicev1beta1.Resource("snapshotmetadataservice"))}
+	return &snapshotMetadataServiceLister{indexer: indexer}
+}
+
+// List lists all SnapshotMetadataServices in the indexer.
+func (s *snapshotMetadataServiceLister) List(selector labels.Selector) (ret []*v1beta1.SnapshotMetadataService, err error) {
+	err = cache.ListAll(s.indexer, selector, func(m interface{}) {
+		ret = append(ret, m.(*v1beta1.SnapshotMetadataService))
+	})
+	return ret, err
+}
+
+// Get retrieves the SnapshotMetadataService from the index for a given name.
+func (s *snapshotMetadataServiceLister) Get(name string) (*v1beta1.SnapshotMetadataService, error) {
+	obj, exists, err := s.indexer.GetByKey(name)
+	if err != nil {
+		return nil, err
+	}
+	if !exists {
+		return nil, errors.NewNotFound(v1beta1.Resource("snapshotmetadataservice"), name)
+	}
+	return obj.(*v1beta1.SnapshotMetadataService), nil
 }

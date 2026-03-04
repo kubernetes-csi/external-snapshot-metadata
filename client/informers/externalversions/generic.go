@@ -19,7 +19,7 @@ limitations under the License.
 package externalversions
 
 import (
-	fmt "fmt"
+	"fmt"
 
 	v1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
 	schema "k8s.io/apimachinery/pkg/runtime/schema"
@@ -55,6 +55,7 @@ func (f *sharedInformerFactory) ForResource(resource schema.GroupVersionResource
 	// Group=cbt.storage.k8s.io, Version=v1beta1
 	case v1beta1.SchemeGroupVersion.WithResource("snapshotmetadataservices"):
 		return &genericInformer{resource: resource.GroupResource(), informer: f.Cbt().V1beta1().SnapshotMetadataServices().Informer()}, nil
+
 	}
 
 	return nil, fmt.Errorf("no informer found for %v", resource)
