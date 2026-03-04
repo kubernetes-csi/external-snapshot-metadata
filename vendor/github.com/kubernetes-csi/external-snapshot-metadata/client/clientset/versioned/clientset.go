@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -19,10 +19,11 @@ limitations under the License.
 package versioned
 
 import (
-	"fmt"
-	"net/http"
+	fmt "fmt"
+	http "net/http"
 
 	cbtv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1alpha1"
+	cbtv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
 	flowcontrol "k8s.io/client-go/util/flowcontrol"
@@ -31,17 +32,24 @@ import (
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
 	CbtV1alpha1() cbtv1alpha1.CbtV1alpha1Interface
+	CbtV1beta1() cbtv1beta1.CbtV1beta1Interface
 }
 
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
 	cbtV1alpha1 *cbtv1alpha1.CbtV1alpha1Client
+	cbtV1beta1  *cbtv1beta1.CbtV1beta1Client
 }
 
 // CbtV1alpha1 retrieves the CbtV1alpha1Client
 func (c *Clientset) CbtV1alpha1() cbtv1alpha1.CbtV1alpha1Interface {
 	return c.cbtV1alpha1
+}
+
+// CbtV1beta1 retrieves the CbtV1beta1Client
+func (c *Clientset) CbtV1beta1() cbtv1beta1.CbtV1beta1Interface {
+	return c.cbtV1beta1
 }
 
 // Discovery retrieves the DiscoveryClient
@@ -92,6 +100,10 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 	if err != nil {
 		return nil, err
 	}
+	cs.cbtV1beta1, err = cbtv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
+	if err != nil {
+		return nil, err
+	}
 
 	cs.DiscoveryClient, err = discovery.NewDiscoveryClientForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
@@ -114,6 +126,7 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
 	cs.cbtV1alpha1 = cbtv1alpha1.New(c)
+	cs.cbtV1beta1 = cbtv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
 	return &cs
