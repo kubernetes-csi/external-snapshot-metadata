@@ -19,14 +19,15 @@ limitations under the License.
 package v1beta1
 
 import (
-	context "context"
+	"context"
+	"time"
 
-	snapshotmetadataservicev1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
+	v1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
 	scheme "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/scheme"
 	v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	types "k8s.io/apimachinery/pkg/types"
 	watch "k8s.io/apimachinery/pkg/watch"
-	gentype "k8s.io/client-go/gentype"
+	rest "k8s.io/client-go/rest"
 )
 
 // SnapshotMetadataServicesGetter has a method to return a SnapshotMetadataServiceInterface.
@@ -37,36 +38,131 @@ type SnapshotMetadataServicesGetter interface {
 
 // SnapshotMetadataServiceInterface has methods to work with SnapshotMetadataService resources.
 type SnapshotMetadataServiceInterface interface {
-	Create(ctx context.Context, snapshotMetadataService *snapshotmetadataservicev1beta1.SnapshotMetadataService, opts v1.CreateOptions) (*snapshotmetadataservicev1beta1.SnapshotMetadataService, error)
-	Update(ctx context.Context, snapshotMetadataService *snapshotmetadataservicev1beta1.SnapshotMetadataService, opts v1.UpdateOptions) (*snapshotmetadataservicev1beta1.SnapshotMetadataService, error)
+	Create(ctx context.Context, snapshotMetadataService *v1beta1.SnapshotMetadataService, opts v1.CreateOptions) (*v1beta1.SnapshotMetadataService, error)
+	Update(ctx context.Context, snapshotMetadataService *v1beta1.SnapshotMetadataService, opts v1.UpdateOptions) (*v1beta1.SnapshotMetadataService, error)
 	Delete(ctx context.Context, name string, opts v1.DeleteOptions) error
 	DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error
-	Get(ctx context.Context, name string, opts v1.GetOptions) (*snapshotmetadataservicev1beta1.SnapshotMetadataService, error)
-	List(ctx context.Context, opts v1.ListOptions) (*snapshotmetadataservicev1beta1.SnapshotMetadataServiceList, error)
+	Get(ctx context.Context, name string, opts v1.GetOptions) (*v1beta1.SnapshotMetadataService, error)
+	List(ctx context.Context, opts v1.ListOptions) (*v1beta1.SnapshotMetadataServiceList, error)
 	Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error)
-	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *snapshotmetadataservicev1beta1.SnapshotMetadataService, err error)
+	Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.SnapshotMetadataService, err error)
 	SnapshotMetadataServiceExpansion
 }
 
 // snapshotMetadataServices implements SnapshotMetadataServiceInterface
 type snapshotMetadataServices struct {
-	*gentype.ClientWithList[*snapshotmetadataservicev1beta1.SnapshotMetadataService, *snapshotmetadataservicev1beta1.SnapshotMetadataServiceList]
+	client rest.Interface
 }
 
 // newSnapshotMetadataServices returns a SnapshotMetadataServices
 func newSnapshotMetadataServices(c *CbtV1beta1Client) *snapshotMetadataServices {
 	return &snapshotMetadataServices{
-		gentype.NewClientWithList[*snapshotmetadataservicev1beta1.SnapshotMetadataService, *snapshotmetadataservicev1beta1.SnapshotMetadataServiceList](
-			"snapshotmetadataservices",
-			c.RESTClient(),
-			scheme.ParameterCodec,
-			"",
-			func() *snapshotmetadataservicev1beta1.SnapshotMetadataService {
-				return &snapshotmetadataservicev1beta1.SnapshotMetadataService{}
-			},
-			func() *snapshotmetadataservicev1beta1.SnapshotMetadataServiceList {
-				return &snapshotmetadataservicev1beta1.SnapshotMetadataServiceList{}
-			},
-		),
+		client: c.RESTClient(),
 	}
+}
+
+// Get takes name of the snapshotMetadataService, and returns the corresponding snapshotMetadataService object, and an error if there is any.
+func (c *snapshotMetadataServices) Get(ctx context.Context, name string, options v1.GetOptions) (result *v1beta1.SnapshotMetadataService, err error) {
+	result = &v1beta1.SnapshotMetadataService{}
+	err = c.client.Get().
+		Resource("snapshotmetadataservices").
+		Name(name).
+		VersionedParams(&options, scheme.ParameterCodec).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// List takes label and field selectors, and returns the list of SnapshotMetadataServices that match those selectors.
+func (c *snapshotMetadataServices) List(ctx context.Context, opts v1.ListOptions) (result *v1beta1.SnapshotMetadataServiceList, err error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
+	result = &v1beta1.SnapshotMetadataServiceList{}
+	err = c.client.Get().
+		Resource("snapshotmetadataservices").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Watch returns a watch.Interface that watches the requested snapshotMetadataServices.
+func (c *snapshotMetadataServices) Watch(ctx context.Context, opts v1.ListOptions) (watch.Interface, error) {
+	var timeout time.Duration
+	if opts.TimeoutSeconds != nil {
+		timeout = time.Duration(*opts.TimeoutSeconds) * time.Second
+	}
+	opts.Watch = true
+	return c.client.Get().
+		Resource("snapshotmetadataservices").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Watch(ctx)
+}
+
+// Create takes the representation of a snapshotMetadataService and creates it.  Returns the server's representation of the snapshotMetadataService, and an error, if there is any.
+func (c *snapshotMetadataServices) Create(ctx context.Context, snapshotMetadataService *v1beta1.SnapshotMetadataService, opts v1.CreateOptions) (result *v1beta1.SnapshotMetadataService, err error) {
+	result = &v1beta1.SnapshotMetadataService{}
+	err = c.client.Post().
+		Resource("snapshotmetadataservices").
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(snapshotMetadataService).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Update takes the representation of a snapshotMetadataService and updates it. Returns the server's representation of the snapshotMetadataService, and an error, if there is any.
+func (c *snapshotMetadataServices) Update(ctx context.Context, snapshotMetadataService *v1beta1.SnapshotMetadataService, opts v1.UpdateOptions) (result *v1beta1.SnapshotMetadataService, err error) {
+	result = &v1beta1.SnapshotMetadataService{}
+	err = c.client.Put().
+		Resource("snapshotmetadataservices").
+		Name(snapshotMetadataService.Name).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(snapshotMetadataService).
+		Do(ctx).
+		Into(result)
+	return
+}
+
+// Delete takes name of the snapshotMetadataService and deletes it. Returns an error if one occurs.
+func (c *snapshotMetadataServices) Delete(ctx context.Context, name string, opts v1.DeleteOptions) error {
+	return c.client.Delete().
+		Resource("snapshotmetadataservices").
+		Name(name).
+		Body(&opts).
+		Do(ctx).
+		Error()
+}
+
+// DeleteCollection deletes a collection of objects.
+func (c *snapshotMetadataServices) DeleteCollection(ctx context.Context, opts v1.DeleteOptions, listOpts v1.ListOptions) error {
+	var timeout time.Duration
+	if listOpts.TimeoutSeconds != nil {
+		timeout = time.Duration(*listOpts.TimeoutSeconds) * time.Second
+	}
+	return c.client.Delete().
+		Resource("snapshotmetadataservices").
+		VersionedParams(&listOpts, scheme.ParameterCodec).
+		Timeout(timeout).
+		Body(&opts).
+		Do(ctx).
+		Error()
+}
+
+// Patch applies the patch and returns the patched snapshotMetadataService.
+func (c *snapshotMetadataServices) Patch(ctx context.Context, name string, pt types.PatchType, data []byte, opts v1.PatchOptions, subresources ...string) (result *v1beta1.SnapshotMetadataService, err error) {
+	result = &v1beta1.SnapshotMetadataService{}
+	err = c.client.Patch(pt).
+		Resource("snapshotmetadataservices").
+		Name(name).
+		SubResource(subresources...).
+		VersionedParams(&opts, scheme.ParameterCodec).
+		Body(data).
+		Do(ctx).
+		Into(result)
+	return
 }

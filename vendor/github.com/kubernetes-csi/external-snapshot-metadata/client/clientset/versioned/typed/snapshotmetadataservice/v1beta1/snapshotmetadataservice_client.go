@@ -19,10 +19,10 @@ limitations under the License.
 package v1beta1
 
 import (
-	http "net/http"
+	"net/http"
 
-	snapshotmetadataservicev1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
-	scheme "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/scheme"
+	v1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
+	"github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/scheme"
 	rest "k8s.io/client-go/rest"
 )
 
@@ -45,7 +45,9 @@ func (c *CbtV1beta1Client) SnapshotMetadataServices() SnapshotMetadataServiceInt
 // where httpClient was generated with rest.HTTPClientFor(c).
 func NewForConfig(c *rest.Config) (*CbtV1beta1Client, error) {
 	config := *c
-	setConfigDefaults(&config)
+	if err := setConfigDefaults(&config); err != nil {
+		return nil, err
+	}
 	httpClient, err := rest.HTTPClientFor(&config)
 	if err != nil {
 		return nil, err
@@ -57,7 +59,9 @@ func NewForConfig(c *rest.Config) (*CbtV1beta1Client, error) {
 // Note the http client provided takes precedence over the configured transport values.
 func NewForConfigAndClient(c *rest.Config, h *http.Client) (*CbtV1beta1Client, error) {
 	config := *c
-	setConfigDefaults(&config)
+	if err := setConfigDefaults(&config); err != nil {
+		return nil, err
+	}
 	client, err := rest.RESTClientForConfigAndClient(&config, h)
 	if err != nil {
 		return nil, err
@@ -80,15 +84,17 @@ func New(c rest.Interface) *CbtV1beta1Client {
 	return &CbtV1beta1Client{c}
 }
 
-func setConfigDefaults(config *rest.Config) {
-	gv := snapshotmetadataservicev1beta1.SchemeGroupVersion
+func setConfigDefaults(config *rest.Config) error {
+	gv := v1beta1.SchemeGroupVersion
 	config.GroupVersion = &gv
 	config.APIPath = "/apis"
-	config.NegotiatedSerializer = rest.CodecFactoryForGeneratedClient(scheme.Scheme, scheme.Codecs).WithoutConversion()
+	config.NegotiatedSerializer = scheme.Codecs.WithoutConversion()
 
 	if config.UserAgent == "" {
 		config.UserAgent = rest.DefaultKubernetesUserAgent()
 	}
+
+	return nil
 }
 
 // RESTClient returns a RESTClient that is used to communicate

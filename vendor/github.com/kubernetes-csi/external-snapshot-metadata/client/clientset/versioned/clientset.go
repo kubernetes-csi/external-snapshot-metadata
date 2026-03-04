@@ -19,8 +19,8 @@ limitations under the License.
 package versioned
 
 import (
-	fmt "fmt"
-	http "net/http"
+	"fmt"
+	"net/http"
 
 	cbtv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1beta1"
 	discovery "k8s.io/client-go/discovery"

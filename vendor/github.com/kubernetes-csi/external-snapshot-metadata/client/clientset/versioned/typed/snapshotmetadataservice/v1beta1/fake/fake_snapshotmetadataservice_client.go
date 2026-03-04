@@ -29,7 +29,7 @@ type FakeCbtV1beta1 struct {
 }
 
 func (c *FakeCbtV1beta1) SnapshotMetadataServices() v1beta1.SnapshotMetadataServiceInterface {
-	return newFakeSnapshotMetadataServices(c)
+	return &FakeSnapshotMetadataServices{c}
 }
 
 // RESTClient returns a RESTClient that is used to communicate
