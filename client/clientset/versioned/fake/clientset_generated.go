@@ -20,8 +20,6 @@ package fake
 
 import (
 	clientset "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
-	cbtv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1alpha1"
-	fakecbtv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1alpha1/fake"
 	cbtv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1beta1"
 	fakecbtv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1beta1/fake"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -96,11 +94,6 @@ var (
 	_ clientset.Interface = &Clientset{}
 	_ testing.FakeClient  = &Clientset{}
 )
-
-// CbtV1alpha1 retrieves the CbtV1alpha1Client
-func (c *Clientset) CbtV1alpha1() cbtv1alpha1.CbtV1alpha1Interface {
-	return &fakecbtv1alpha1.FakeCbtV1alpha1{Fake: &c.Fake}
-}
 
 // CbtV1beta1 retrieves the CbtV1beta1Client
 func (c *Clientset) CbtV1beta1() cbtv1beta1.CbtV1beta1Interface {

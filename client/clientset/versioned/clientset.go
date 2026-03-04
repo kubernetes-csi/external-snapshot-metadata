@@ -22,7 +22,6 @@ import (
 	fmt "fmt"
 	http "net/http"
 
-	cbtv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1alpha1"
 	cbtv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1beta1"
 	discovery "k8s.io/client-go/discovery"
 	rest "k8s.io/client-go/rest"
@@ -31,20 +30,13 @@ import (
 
 type Interface interface {
 	Discovery() discovery.DiscoveryInterface
-	CbtV1alpha1() cbtv1alpha1.CbtV1alpha1Interface
 	CbtV1beta1() cbtv1beta1.CbtV1beta1Interface
 }
 
 // Clientset contains the clients for groups.
 type Clientset struct {
 	*discovery.DiscoveryClient
-	cbtV1alpha1 *cbtv1alpha1.CbtV1alpha1Client
-	cbtV1beta1  *cbtv1beta1.CbtV1beta1Client
-}
-
-// CbtV1alpha1 retrieves the CbtV1alpha1Client
-func (c *Clientset) CbtV1alpha1() cbtv1alpha1.CbtV1alpha1Interface {
-	return c.cbtV1alpha1
+	cbtV1beta1 *cbtv1beta1.CbtV1beta1Client
 }
 
 // CbtV1beta1 retrieves the CbtV1beta1Client
@@ -96,10 +88,6 @@ func NewForConfigAndClient(c *rest.Config, httpClient *http.Client) (*Clientset,
 
 	var cs Clientset
 	var err error
-	cs.cbtV1alpha1, err = cbtv1alpha1.NewForConfigAndClient(&configShallowCopy, httpClient)
-	if err != nil {
-		return nil, err
-	}
 	cs.cbtV1beta1, err = cbtv1beta1.NewForConfigAndClient(&configShallowCopy, httpClient)
 	if err != nil {
 		return nil, err
@@ -125,7 +113,6 @@ func NewForConfigOrDie(c *rest.Config) *Clientset {
 // New creates a new Clientset for the given RESTClient.
 func New(c rest.Interface) *Clientset {
 	var cs Clientset
-	cs.cbtV1alpha1 = cbtv1alpha1.New(c)
 	cs.cbtV1beta1 = cbtv1beta1.New(c)
 
 	cs.DiscoveryClient = discovery.NewDiscoveryClient(c)
