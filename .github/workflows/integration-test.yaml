@@ -27,7 +27,7 @@ jobs:
       - name: Build csi-snapshot-metadata container image
         run: |
           make build-csi-snapshot-metadata
-          minikube image build -f ./cmd/csi-snapshot-metadata/Dockerfile -t gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:test .
+          minikube image build -f ./cmd/csi-snapshot-metadata/Dockerfile -t gcr.io/k8s-staging-sig-storage/csi-snapshot-metadata:${{ github.sha }} .
 
       - name: Deploy snapshot-controller
         run: |
@@ -46,7 +46,11 @@ jobs:
 
           git clone https://github.com/kubernetes-csi/csi-driver-host-path.git ~/csi-driver-host-path
 
-          CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="false" CSI_SNAPSHOT_METADATA_TAG="test" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
+          # Patch deploy-hostpath.sh to allow CSI_SNAPSHOT_METADATA_TAG to override the manifest URLs
+          # (upstream hardcodes `false` for csi-snapshot-metadata, preventing env var override)
+          sed -i 's/rbac_version "\${BASE_DIR}\/hostpath\/csi-snapshot-metadata-sidecar.patch" csi-snapshot-metadata false/rbac_version "${BASE_DIR}\/hostpath\/csi-snapshot-metadata-sidecar.patch" csi-snapshot-metadata true/g' ~/csi-driver-host-path/deploy/util/deploy-hostpath.sh
+
+          CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="true" CSI_SNAPSHOT_METADATA_TAG="${{ github.sha }}" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
 
           kubectl apply -f ./deploy/example/csi-driver/testdata/
 
