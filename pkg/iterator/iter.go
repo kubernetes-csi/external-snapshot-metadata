@@ -31,7 +31,7 @@ import (
 	authv1 "k8s.io/api/authentication/v1"
 	apimetav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 
-	smsCRv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
+	smsCRv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 )
 
@@ -188,7 +188,7 @@ type iterator struct {
 type iteratorHelpers interface {
 	getCSIDriverFromPrimarySnapshot(ctx context.Context) (string, error)
 	getDefaultServiceAccount(ctx context.Context) (saNamespace string, saName string, err error)
-	getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error)
+	getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1beta1.SnapshotMetadataService, error)
 	createSecurityToken(ctx context.Context, saNamespace, saName, audience string) (string, error)
 	getGRPCClient(caCert []byte, URL string) (api.SnapshotMetadataClient, error)
 	getAllocatedBlocks(ctx context.Context, grpcClient api.SnapshotMetadataClient, securityToken string) error
@@ -313,8 +313,8 @@ func (iter *iterator) getCSIDriverFromPrimarySnapshot(ctx context.Context) (stri
 	return vsc.Spec.Driver, nil
 }
 
-func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1alpha1.SnapshotMetadataService, error) {
-	sms, err := iter.SmsCRClient.CbtV1alpha1().SnapshotMetadataServices().Get(ctx, csiDriver, apimetav1.GetOptions{})
+func (iter *iterator) getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1beta1.SnapshotMetadataService, error) {
+	sms, err := iter.SmsCRClient.CbtV1beta1().SnapshotMetadataServices().Get(ctx, csiDriver, apimetav1.GetOptions{})
 	if err != nil {
 		return nil, fmt.Errorf("SnapshotMetadataServices.Get(%s): %w", csiDriver, err)
 	}

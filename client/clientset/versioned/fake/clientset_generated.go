@@ -1,5 +1,5 @@
 /*
-Copyright 2024 The Kubernetes Authors.
+Copyright 2026 The Kubernetes Authors.
 
 Licensed under the Apache License, Version 2.0 (the "License");
 you may not use this file except in compliance with the License.
@@ -20,8 +20,8 @@ package fake
 
 import (
 	clientset "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
-	cbtv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1alpha1"
-	fakecbtv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1alpha1/fake"
+	cbtv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1beta1"
+	fakecbtv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/typed/snapshotmetadataservice/v1beta1/fake"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/apimachinery/pkg/watch"
 	"k8s.io/client-go/discovery"
@@ -79,7 +79,7 @@ var (
 	_ testing.FakeClient  = &Clientset{}
 )
 
-// CbtV1alpha1 retrieves the CbtV1alpha1Client
-func (c *Clientset) CbtV1alpha1() cbtv1alpha1.CbtV1alpha1Interface {
-	return &fakecbtv1alpha1.FakeCbtV1alpha1{Fake: &c.Fake}
+// CbtV1beta1 retrieves the CbtV1beta1Client
+func (c *Clientset) CbtV1beta1() cbtv1beta1.CbtV1beta1Interface {
+	return &fakecbtv1beta1.FakeCbtV1beta1{Fake: &c.Fake}
 }

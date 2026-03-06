@@ -27,6 +27,11 @@ proto:
 crd:
 	@ cd client && ./hack/update-crd.sh
 
+.PHONY: codegen
+# Generate clientset/informers/listers and deepcopy code
+codegen:
+	@ cd client && ./hack/update-generated-code.sh
+
 .PHONY: lint
 # Run golangci-lint
 lint:

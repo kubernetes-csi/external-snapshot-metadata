@@ -45,7 +45,7 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 	"k8s.io/klog/v2"
 
-	smsv1alpha1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1alpha1"
+	smsv1beta1 "github.com/kubernetes-csi/external-snapshot-metadata/client/apis/snapshotmetadataservice/v1beta1"
 	fakecbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned/fake"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
@@ -232,11 +232,11 @@ func (th *testHarness) makeFakeCBTClient() *fakecbt.Clientset {
 		if ga.GetName() != th.DriverName {
 			return false, nil, nil
 		}
-		sms := &smsv1alpha1.SnapshotMetadataService{
+		sms := &smsv1beta1.SnapshotMetadataService{
 			ObjectMeta: apimetav1.ObjectMeta{
 				Name: th.DriverName,
 			},
-			Spec: smsv1alpha1.SnapshotMetadataServiceSpec{
+			Spec: smsv1beta1.SnapshotMetadataServiceSpec{
 				Audience: th.Audience,
 			},
 		}

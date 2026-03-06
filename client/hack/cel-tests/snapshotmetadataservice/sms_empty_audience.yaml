@@ -1,4 +1,4 @@
-apiVersion: cbt.storage.k8s.io/v1alpha1
+apiVersion: cbt.storage.k8s.io/v1beta1
 kind: SnapshotMetadataService
 metadata:
   name: new-sms-test
