@@ -15,5 +15,7 @@
 # limitations under the License.
 
 
+CSI_PROW_GO_VERSION_BUILD="1.26.1"
+
 . release-tools/prow.sh
 main
