@@ -1,6 +1,6 @@
 module github.com/kubernetes-csi/external-snapshot-metadata/client
 
-go 1.26.1
+go 1.25.8
 
 require (
 	k8s.io/apimachinery v0.30.1
