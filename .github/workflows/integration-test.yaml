@@ -13,10 +13,10 @@ jobs:
         audience: [false, true]
     steps:
       - name: Check out the repo
-        uses: actions/checkout@v6
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6
 
       - name: Start minikube
-        uses: medyagh/setup-minikube@latest
+        uses: medyagh/setup-minikube@e9e035a86bbc3caea26a450bd4dbf9d0c453682e # v0.0.21
 
       - name: Install Dependencies
         run: |
@@ -215,4 +215,4 @@ jobs:
 
       - name: Setup tmate session to debug
         if: ${{ failure() }}
-        uses: mxschmitt/action-tmate@v3
+        uses: mxschmitt/action-tmate@c0afd6f790e3a5564914980036ebf83216678101 # v3
