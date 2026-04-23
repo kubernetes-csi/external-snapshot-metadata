@@ -201,6 +201,11 @@ func newSidecarFlagSet(name, version string) *sidecarFlagSet {
 	// K8s logging initialization
 	klog.InitFlags(s.FlagSet)
 	s.Set("logtostderr", "true")
+	// Opt into the new klog behavior so that -stderrthreshold is honored even
+	// when -logtostderr=true (the default).
+	// Ref: kubernetes/klog#212, kubernetes/klog#432
+	s.Set("legacy_stderr_threshold_behavior", "false")
+	s.Set("stderrthreshold", "INFO")
 
 	return s
 }
