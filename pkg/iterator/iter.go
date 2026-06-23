@@ -132,6 +132,17 @@ type Args struct {
 	// security token will expire.
 	// If unspecified then the value of DefaultTokenExpirySeconds is used.
 	TokenExpirySecs int64
+
+	// CACert, Address, and Audience may be provided to bypass the
+	// SnapshotMetadataService CR lookup. All three must be provided
+	// together; if any are absent the CR will be fetched instead.
+	CACert   []byte
+	Address  string
+	Audience string
+}
+
+func (a Args) smsCRNeeded() bool {
+	return len(a.CACert) == 0 && a.Address == "" && a.Audience == ""
 }
 
 func (a Args) Validate() error {
@@ -150,9 +161,11 @@ func (a Args) Validate() error {
 		return fmt.Errorf("%w: SAName provided but SANamespace missing", ErrInvalidArgs)
 	case a.SANamespace != "" && a.SAName == "":
 		return fmt.Errorf("%w: SANamespace provided but SAName missing", ErrInvalidArgs)
+	case (len(a.CACert) > 0 || a.Address != "" || a.Audience != "") && !(len(a.CACert) > 0 && a.Address != "" && a.Audience != ""):
+		return fmt.Errorf("%w: CACert, Address, and Audience must all be provided together", ErrInvalidArgs)
 	}
 
-	if err := a.Clients.Validate(); err != nil {
+	if err := a.Clients.validate(a.smsCRNeeded()); err != nil {
 		return err
 	}
 
@@ -234,20 +247,33 @@ func (iter *iterator) run(ctx context.Context) error {
 		}
 	}
 
-	// load the driver's SnapshotMetadataService object
-	smsCR, err := iter.h.getSnapshotMetadataServiceCR(ctx, csiDriver)
-	if err != nil {
-		return err
+	var audience string
+	var caCert []byte
+	var address string
+
+	if iter.Address != "" {
+		audience = iter.Audience
+		caCert = iter.CACert
+		address = iter.Address
+	} else {
+		smsCR, err := iter.h.getSnapshotMetadataServiceCR(ctx, csiDriver)
+		if err != nil {
+			return err
+		}
+
+		audience = smsCR.Spec.Audience
+		caCert = smsCR.Spec.CACert
+		address = smsCR.Spec.Address
 	}
 
 	// get the security token to use in the API
-	securityToken, err := iter.h.createSecurityToken(ctx, saNamespace, saName, smsCR.Spec.Audience)
+	securityToken, err := iter.h.createSecurityToken(ctx, saNamespace, saName, audience)
 	if err != nil {
 		return err
 	}
 
 	// create the snapshot metadata service gRPC client
-	apiClient, err := iter.h.getGRPCClient(smsCR.Spec.CACert, smsCR.Spec.Address)
+	apiClient, err := iter.h.getGRPCClient(caCert, address)
 	if err != nil {
 		return err
 	}

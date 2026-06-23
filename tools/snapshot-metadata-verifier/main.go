@@ -73,6 +73,7 @@ var (
 	args                               iterator.Args
 	kubeConfig                         string
 	sourceDevicePath, targetDevicePath string
+	caCertFile                         string
 )
 
 func parseFlags() {
@@ -96,6 +97,10 @@ func parseFlags() {
 
 	flag.StringVar(&args.SAName, "service-account", "", "ServiceAccount used to create a security token. If unspecified the ServiceAccount of the Pod in which the command is invoked will be used.")
 	flag.StringVar(&args.SANamespace, "service-account-namespace", "", "Namespace of the ServiceAccount used to create a security token. If unspecified the Namespace of the Pod in which the command is invoked will be used.")
+
+	flag.StringVar(&caCertFile, "ca-cert-file", "", "Path to the CA certificate file for the gRPC server. If provided, --address and --audience must also be provided to bypass the SnapshotMetadataService CR lookup.")
+	flag.StringVar(&args.Address, "address", "", "Address of the SnapshotMetadata gRPC service. If provided, --ca-cert-file and --audience must also be provided.")
+	flag.StringVar(&args.Audience, "audience", "", "Audience string for the security token. If provided, --ca-cert-file and --address must also be provided.")
 
 	flag.Int64Var(&args.TokenExpirySecs, "token-expiry", 600, "Expiry time in seconds for the security token.")
 	flag.Int64Var(&args.StartingOffset, "starting-offset", 0, "The starting byte offset.")
@@ -137,6 +142,16 @@ func main() {
 	// parse flags and set the output emitter
 	parseFlags()
 
+	if caCertFile != "" {
+		caCert, err := os.ReadFile(caCertFile)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error reading ca-cert-file %s: %v\n", caCertFile, err)
+			os.Exit(1)
+		}
+
+		args.CACert = caCert
+	}
+
 	// get the K8s config from either kubeConfig, in-cluster or default
 	config, err := buildConfig(kubeConfig)
 	if err != nil {
@@ -144,7 +159,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	clients, err := iterator.BuildClients(config)
+	smsBypass := args.Address != ""
+
+	var clients iterator.Clients
+	if smsBypass {
+		clients, err = iterator.BuildClientsWithOptions(config, true)
+	} else {
+		clients, err = iterator.BuildClients(config)
+	}
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error creating clients: %v\n", err)
 		os.Exit(1)

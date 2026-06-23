@@ -117,6 +117,70 @@ func TestValidateArgs(t *testing.T) {
 	args.SAName = "serviceAccount"
 	err = args.Validate()
 	assert.NoError(t, err)
+
+	// Partial bypass fields: each partial combination should error
+	saved := args
+	args.Address = "addr"
+	err = args.Validate()
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "must all be provided together")
+
+	args = saved
+	args.Audience = "aud"
+	err = args.Validate()
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "must all be provided together")
+
+	args = saved
+	args.CACert = []byte("cert")
+	err = args.Validate()
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "must all be provided together")
+
+	args = saved
+	args.Address = "addr"
+	args.Audience = "aud"
+	err = args.Validate()
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "must all be provided together")
+
+	args = saved
+	args.CACert = []byte("cert")
+	args.Audience = "aud"
+	err = args.Validate()
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "must all be provided together")
+
+	args = saved
+	args.CACert = []byte("cert")
+	args.Address = "addr"
+	err = args.Validate()
+	assert.ErrorIs(t, err, ErrInvalidArgs)
+	assert.ErrorContains(t, err, "must all be provided together")
+
+	// All 3 set with nil SmsCRClient should succeed
+	args = saved
+	args.CACert = []byte("cert")
+	args.Address = "addr"
+	args.Audience = "aud"
+	args.Clients.SmsCRClient = nil
+	err = args.Validate()
+	assert.NoError(t, err)
+
+	// All 3 set with full clients should succeed
+	args.Clients.SmsCRClient = fakeSmsCR.NewSimpleClientset()
+	err = args.Validate()
+	assert.NoError(t, err)
+}
+
+func TestSMSCRNeeded(t *testing.T) {
+	args := Args{}
+	assert.True(t, args.smsCRNeeded())
+
+	args.CACert = []byte("cert")
+	args.Address = "addr"
+	args.Audience = "aud"
+	assert.False(t, args.smsCRNeeded())
 }
 
 func TestNewIterator(t *testing.T) {
@@ -244,6 +308,31 @@ func TestRun(t *testing.T) {
 		assert.ErrorIs(t, th.InCallContext.Err(), context.Canceled)
 	})
 
+	t.Run("bypass-sms-cr", func(t *testing.T) {
+		th := newTestHarness()
+		th.RetGetGRPCClient = th.GRPCSnapshotMetadataClient(t)
+		th.RetCreateSecurityToken = "security-token"
+
+		bypassCACert := []byte("bypass-ca-cert")
+		bypassAddress := "bypass-address:443"
+		bypassAudience := "bypass-audience"
+
+		iter := th.NewTestIterator()
+		iter.PrevSnapshotName = ""
+		iter.CSIDriver = th.CSIDriver
+		iter.CACert = bypassCACert
+		iter.Address = bypassAddress
+		iter.Audience = bypassAudience
+
+		err := iter.run(context.Background())
+		assert.NoError(t, err)
+
+		assert.False(t, th.CalledGetSnapshotMetadataServiceCR)
+		assert.Equal(t, bypassAudience, th.InCreateSecurityTokenAudience)
+		assert.Equal(t, bypassCACert, th.InGetGRPCClientCA)
+		assert.Equal(t, bypassAddress, th.InGetGRPCClientURL)
+	})
+
 	t.Run("err-get-csi-driver-from-primary-snapshot", func(t *testing.T) {
 		th := newTestHarness()
 		th.RetGetCSIDriverFromPrimarySnapshotErr = testErr
@@ -269,6 +358,7 @@ func TestRun(t *testing.T) {
 		err := iter.run(context.Background())
 		assert.ErrorIs(t, err, testErr)
 
+		assert.True(t, th.CalledGetSnapshotMetadataServiceCR)
 		assert.Equal(t, th.CSIDriver, th.InGetSnapshotMetadataServiceCRCSIDriver)
 	})
 

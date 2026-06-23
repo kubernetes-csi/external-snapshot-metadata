@@ -83,4 +83,39 @@ func TestBuildClients(t *testing.T) {
 		assert.ErrorContains(t, err, "SnapshotMetadataServiceCR.NewForConfig")
 		assert.Nil(t, c.SmsCRClient)
 	})
+
+	t.Run("build-clients-with-options-skip-sms", func(t *testing.T) {
+		clients, err := BuildClientsWithOptions(config, true)
+		assert.NoError(t, err)
+		assert.NotNil(t, clients.KubeClient)
+		assert.NotNil(t, clients.SnapshotClient)
+		assert.Nil(t, clients.SmsCRClient)
+	})
+
+	t.Run("build-clients-with-options-include-sms", func(t *testing.T) {
+		clients, err := BuildClientsWithOptions(config, false)
+		assert.NoError(t, err)
+		assert.NotNil(t, clients.KubeClient)
+		assert.NotNil(t, clients.SnapshotClient)
+		assert.NotNil(t, clients.SmsCRClient)
+	})
+}
+
+func TestValidateClients(t *testing.T) {
+	th := newTestHarness()
+
+	t.Run("sms-cr-required-nil", func(t *testing.T) {
+		c := th.Clients()
+		c.SmsCRClient = nil
+		err := c.validate(true)
+		assert.ErrorIs(t, err, ErrInvalidArgs)
+		assert.ErrorContains(t, err, "SmsCRClient")
+	})
+
+	t.Run("sms-cr-not-required-nil", func(t *testing.T) {
+		c := th.Clients()
+		c.SmsCRClient = nil
+		err := c.validate(false)
+		assert.NoError(t, err)
+	})
 }

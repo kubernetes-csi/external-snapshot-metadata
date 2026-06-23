@@ -73,6 +73,7 @@ type testHarness struct {
 	RetGetCSIDriverFromPrimarySnapshot    string
 	RetGetCSIDriverFromPrimarySnapshotErr error
 
+	CalledGetSnapshotMetadataServiceCR      bool
 	InGetSnapshotMetadataServiceCRCSIDriver string
 	RetGetSnapshotMetadataServiceCRService  *smsCRv1beta1.SnapshotMetadataService
 	RetGetSnapshotMetadataServiceCRErr      error
@@ -288,6 +289,7 @@ func (th *testHarness) getCSIDriverFromPrimarySnapshot(ctx context.Context) (str
 }
 
 func (th *testHarness) getSnapshotMetadataServiceCR(ctx context.Context, csiDriver string) (*smsCRv1beta1.SnapshotMetadataService, error) {
+	th.CalledGetSnapshotMetadataServiceCR = true
 	th.InGetSnapshotMetadataServiceCRCSIDriver = csiDriver
 	return th.RetGetSnapshotMetadataServiceCRService, th.RetGetSnapshotMetadataServiceCRErr
 }

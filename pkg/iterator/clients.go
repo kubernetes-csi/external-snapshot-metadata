@@ -33,12 +33,16 @@ type Clients struct {
 }
 
 func (c Clients) Validate() error {
+	return c.validate(true)
+}
+
+func (c Clients) validate(smsCRRequired bool) error {
 	switch {
 	case c.KubeClient == nil:
 		return fmt.Errorf("%w: missing KubeClient", ErrInvalidArgs)
 	case c.SnapshotClient == nil:
 		return fmt.Errorf("%w: missing SnapshotClient", ErrInvalidArgs)
-	case c.SmsCRClient == nil:
+	case smsCRRequired && c.SmsCRClient == nil:
 		return fmt.Errorf("%w: missing SmsCRClient", ErrInvalidArgs)
 	}
 
@@ -51,6 +55,28 @@ func BuildClients(config *rest.Config) (Clients, error) {
 
 	if err := clients.makeAllClients(config); err != nil {
 		return Clients{}, err
+	}
+
+	return clients, nil
+}
+
+// BuildClientsWithOptions constructs client interfaces, optionally skipping the SmsCRClient.
+func BuildClientsWithOptions(config *rest.Config, skipSmsCRClient bool) (Clients, error) {
+	var clients Clients
+	var err error
+
+	if clients.KubeClient, err = clients.kubeClient(config); err != nil {
+		return Clients{}, err
+	}
+
+	if clients.SnapshotClient, err = clients.snapshotClient(config); err != nil {
+		return Clients{}, err
+	}
+
+	if !skipSmsCRClient {
+		if clients.SmsCRClient, err = clients.smsCRClient(config); err != nil {
+			return Clients{}, err
+		}
 	}
 
 	return clients, nil
