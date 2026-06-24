@@ -57,6 +57,9 @@ const (
 	flagMetricsPath             = "metrics-path"
 	flagTLSCert                 = "tls-cert"
 	flagTLSKey                  = "tls-key"
+	flagTLSMinVersion           = "tls-min-version"
+	flagTLSCipherSuites         = "tls-cipher-suites"
+	flagTLSCurvePreferences     = "tls-curve-preferences"
 	flagVersion                 = "version"
 	flagAudience                = "audience"
 	flagDisableMetrics          = "disable-metrics"
@@ -153,20 +156,23 @@ type sidecarFlagSet struct {
 	version string
 
 	// flag variables
-	csiAddress         *string
-	csiTimeout         *time.Duration
-	grpcPort           *int
-	httpEndpoint       *string
-	kubeAPIBurst       *int
-	kubeAPIQPS         *float64
-	kubeconfig         *string
-	maxStreamingDurMin *int
-	metricsPath        *string
-	showVersion        *bool
-	tlsCert            *string
-	tlsKey             *string
-	audience           *string
-	disableMetrics     *bool
+	csiAddress          *string
+	csiTimeout          *time.Duration
+	grpcPort            *int
+	httpEndpoint        *string
+	kubeAPIBurst        *int
+	kubeAPIQPS          *float64
+	kubeconfig          *string
+	maxStreamingDurMin  *int
+	metricsPath         *string
+	showVersion         *bool
+	tlsCert             *string
+	tlsKey              *string
+	tlsMinVersion       *string
+	tlsCipherSuites     *string
+	tlsCurvePreferences *string
+	audience            *string
+	disableMetrics      *bool
 }
 
 var sidecarFlagSetErrorHandling flag.ErrorHandling = flag.ExitOnError // UT interception point.
@@ -186,6 +192,9 @@ func newSidecarFlagSet(name, version string) *sidecarFlagSet {
 	s.grpcPort = s.Int(flagGRPCPort, defaultGRPCPort, "GRPC SnapshotMetadata service port number")
 	s.tlsCert = s.String(flagTLSCert, os.Getenv(tlsCertEnvVar), "Path to the TLS certificate file. Can also be set with the environment variable "+tlsCertEnvVar+".")
 	s.tlsKey = s.String(flagTLSKey, os.Getenv(tlsKeyEnvVar), "Path to the TLS private key file. Can also be set with the environment variable "+tlsKeyEnvVar+".")
+	s.tlsMinVersion = s.String(flagTLSMinVersion, "", "Minimum TLS version. Accepted values: VersionTLS12, VersionTLS13. Empty uses Go default (TLS 1.2).")
+	s.tlsCipherSuites = s.String(flagTLSCipherSuites, "", "Comma-separated list of allowed TLS 1.2 cipher suites (Go names). Empty uses Go defaults. Ignored when a TLS 1.3 connection is negotiated.")
+	s.tlsCurvePreferences = s.String(flagTLSCurvePreferences, "", "Comma-separated list of preferred elliptic curves for ECDHE (e.g. X25519,CurveP256). Empty uses Go defaults.")
 	s.audience = s.String(flagAudience, "", "Audience string used for authentication.")
 
 	s.maxStreamingDurMin = s.Int(flagMaxStreamingDurationMin, defaultMaxStreamingDurationMin, "The maximum duration in minutes for any individual streaming session")
@@ -227,17 +236,20 @@ func (s *sidecarFlagSet) parseFlagsAndHandleShowVersion(args []string) (handledS
 
 func (s *sidecarFlagSet) runtimeArgsFromFlags() runtime.Args {
 	return runtime.Args{
-		CSIAddress:   *s.csiAddress,
-		CSITimeout:   *s.csiTimeout,
-		KubeAPIBurst: *s.kubeAPIBurst,
-		KubeAPIQPS:   (float32)(*s.kubeAPIQPS),
-		Kubeconfig:   *s.kubeconfig,
-		GRPCPort:     *s.grpcPort,
-		TLSCertFile:  *s.tlsCert,
-		TLSKeyFile:   *s.tlsKey,
-		HttpEndpoint: *s.httpEndpoint,
-		MetricsPath:  *s.metricsPath,
-		Audience:     *s.audience,
+		CSIAddress:          *s.csiAddress,
+		CSITimeout:          *s.csiTimeout,
+		KubeAPIBurst:        *s.kubeAPIBurst,
+		KubeAPIQPS:          (float32)(*s.kubeAPIQPS),
+		Kubeconfig:          *s.kubeconfig,
+		GRPCPort:            *s.grpcPort,
+		TLSCertFile:         *s.tlsCert,
+		TLSKeyFile:          *s.tlsKey,
+		HttpEndpoint:        *s.httpEndpoint,
+		MetricsPath:         *s.metricsPath,
+		Audience:            *s.audience,
+		TLSMinVersion:       *s.tlsMinVersion,
+		TLSCipherSuites:     *s.tlsCipherSuites,
+		TLSCurvePreferences: *s.tlsCurvePreferences,
 	}
 }
 
@@ -284,6 +296,18 @@ func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []
 
 	if rta.MetricsPath != defaultMetricsPath {
 		argv = append(argv, "-"+flagMetricsPath, rta.MetricsPath)
+	}
+
+	if rta.TLSMinVersion != "" {
+		argv = append(argv, "-"+flagTLSMinVersion, rta.TLSMinVersion)
+	}
+
+	if rta.TLSCipherSuites != "" {
+		argv = append(argv, "-"+flagTLSCipherSuites, rta.TLSCipherSuites)
+	}
+
+	if rta.TLSCurvePreferences != "" {
+		argv = append(argv, "-"+flagTLSCurvePreferences, rta.TLSCurvePreferences)
 	}
 
 	return argv

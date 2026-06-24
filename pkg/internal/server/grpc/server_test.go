@@ -18,6 +18,7 @@ package grpc
 
 import (
 	"context"
+	"crypto/tls"
 	"sync"
 	"testing"
 	"time"
@@ -147,6 +148,158 @@ func TestNewServer(t *testing.T) {
 		s.Stop()
 		assert.False(t, s.IsReady())
 		assert.Error(t, s.isCSIDriverReady(context.Background()))
+	})
+}
+
+func TestNewServerTLSConfig(t *testing.T) {
+	t.Run("tls12-with-ciphers-and-curves", func(t *testing.T) {
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
+
+		rt := &runtime.Runtime{
+			Args: runtime.Args{
+				GRPCPort:            rta.GRPCPort,
+				TLSCertFile:         rta.TLSCertFile,
+				TLSKeyFile:          rta.TLSKeyFile,
+				TLSMinVersion:       "VersionTLS12",
+				TLSCipherSuites:     "TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256",
+				TLSCurvePreferences: "X25519,CurveP256",
+			},
+			DriverName: "driver",
+			CBTClient:  fakecbt.NewSimpleClientset(),
+			KubeClient: fake.NewSimpleClientset(),
+		}
+
+		cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+		assert.NoError(t, err)
+
+		s, err := NewServer(ServerConfig{
+			Runtime:     rt,
+			Certwatcher: cw,
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, s)
+
+		tc := s.tlsCfg
+		assert.NotNil(t, tc)
+		assert.Equal(t, uint16(tls.VersionTLS12), tc.MinVersion)
+		assert.Len(t, tc.CipherSuites, 1)
+		assert.Len(t, tc.CurvePreferences, 2)
+	})
+
+	t.Run("tls13-without-ciphers", func(t *testing.T) {
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
+
+		rt := &runtime.Runtime{
+			Args: runtime.Args{
+				GRPCPort:            rta.GRPCPort,
+				TLSCertFile:         rta.TLSCertFile,
+				TLSKeyFile:          rta.TLSKeyFile,
+				TLSMinVersion:       "VersionTLS13",
+				TLSCurvePreferences: "X25519",
+			},
+			DriverName: "driver",
+			CBTClient:  fakecbt.NewSimpleClientset(),
+			KubeClient: fake.NewSimpleClientset(),
+		}
+
+		cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+		assert.NoError(t, err)
+
+		s, err := NewServer(ServerConfig{
+			Runtime:     rt,
+			Certwatcher: cw,
+		})
+		assert.NoError(t, err)
+		assert.NotNil(t, s)
+
+		tc := s.tlsCfg
+		assert.NotNil(t, tc)
+		assert.Equal(t, uint16(tls.VersionTLS13), tc.MinVersion)
+		assert.Nil(t, tc.CipherSuites)
+		assert.Len(t, tc.CurvePreferences, 1)
+		assert.Equal(t, tls.X25519, tc.CurvePreferences[0])
+	})
+
+	t.Run("invalid-cipher-suite", func(t *testing.T) {
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
+
+		rt := &runtime.Runtime{
+			Args: runtime.Args{
+				GRPCPort:        rta.GRPCPort,
+				TLSCertFile:     rta.TLSCertFile,
+				TLSKeyFile:      rta.TLSKeyFile,
+				TLSCipherSuites: "INVALID_CIPHER",
+			},
+		}
+
+		cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+		assert.NoError(t, err)
+
+		s, err := NewServer(ServerConfig{
+			Runtime:     rt,
+			Certwatcher: cw,
+		})
+		assert.Error(t, err)
+		assert.Nil(t, s)
+		assert.Contains(t, err.Error(), "unsupported or insecure cipher suite")
+	})
+
+	t.Run("invalid-curve", func(t *testing.T) {
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
+
+		rt := &runtime.Runtime{
+			Args: runtime.Args{
+				GRPCPort:            rta.GRPCPort,
+				TLSCertFile:         rta.TLSCertFile,
+				TLSKeyFile:          rta.TLSKeyFile,
+				TLSCurvePreferences: "InvalidCurve",
+			},
+		}
+
+		cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+		assert.NoError(t, err)
+
+		s, err := NewServer(ServerConfig{
+			Runtime:     rt,
+			Certwatcher: cw,
+		})
+		assert.Error(t, err)
+		assert.Nil(t, s)
+		assert.Contains(t, err.Error(), "unsupported curve")
+	})
+
+	t.Run("invalid-tls-version", func(t *testing.T) {
+		rth := runtime.NewTestHarness().WithTestTLSFiles(t)
+		defer rth.RemoveTestTLSFiles(t)
+		rta := rth.RuntimeArgs()
+
+		rt := &runtime.Runtime{
+			Args: runtime.Args{
+				GRPCPort:      rta.GRPCPort,
+				TLSCertFile:   rta.TLSCertFile,
+				TLSKeyFile:    rta.TLSKeyFile,
+				TLSMinVersion: "TLS12",
+			},
+		}
+
+		cw, err := cw.NewCertWatcher(rt.TLSCertFile, rt.TLSKeyFile)
+		assert.NoError(t, err)
+
+		s, err := NewServer(ServerConfig{
+			Runtime:     rt,
+			Certwatcher: cw,
+		})
+		assert.Error(t, err)
+		assert.Nil(t, s)
+		assert.Contains(t, err.Error(), "unsupported TLS version")
 	})
 }
 

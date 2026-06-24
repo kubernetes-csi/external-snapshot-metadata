@@ -33,6 +33,7 @@ import (
 	"k8s.io/client-go/tools/clientcmd"
 
 	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/tlsconfig"
 )
 
 type Args struct {
@@ -58,6 +59,12 @@ type Args struct {
 	MetricsPath string
 	// Audience string is used for authentication.
 	Audience string
+	// Minimum TLS version for the gRPC server. Accepted: "VersionTLS12", "VersionTLS13".
+	TLSMinVersion string
+	// Comma-separated list of allowed TLS 1.2 cipher suites (Go names).
+	TLSCipherSuites string
+	// Comma-separated list of preferred elliptic curves for ECDHE (Go names).
+	TLSCurvePreferences string
 }
 
 func (args *Args) Validate() error {
@@ -72,6 +79,18 @@ func (args *Args) Validate() error {
 		return errors.New("missing TLSCertFile")
 	case args.TLSKeyFile == "":
 		return errors.New("missing TLSKeyFile")
+	}
+
+	if _, err := tlsconfig.ParseTLSVersion(args.TLSMinVersion); err != nil {
+		return err
+	}
+
+	if _, err := tlsconfig.ParseCipherSuites(args.TLSCipherSuites); err != nil {
+		return err
+	}
+
+	if _, err := tlsconfig.ParseCurvePreferences(args.TLSCurvePreferences); err != nil {
+		return err
 	}
 
 	return nil
