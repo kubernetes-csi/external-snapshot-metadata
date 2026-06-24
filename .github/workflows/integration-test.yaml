@@ -6,11 +6,12 @@ on:
 
 jobs:
   minikube-ci:
-    name: Integration test (with${{ matrix.audience == false && 'out' || '' }} audience parameter)
+    name: Integration test (audience=${{ matrix.audience }}, tls_hardened=${{ matrix.tls_hardened }})
     runs-on: ubuntu-latest
     strategy:
       matrix:
         audience: [false, true]
+        tls_hardened: [false, true]
     steps:
       - name: Check out the repo
         uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v6
@@ -47,6 +48,15 @@ jobs:
           if [ "${{ matrix.audience }}" = "true" ]; then
             echo "Enabling audience parameter in hostpath sidecar patch"
             sed -i '/--tls-key=/a\          - "--audience=test-backup-client"' ~/csi-driver-host-path/deploy/kubernetes-latest/hostpath/csi-snapshot-metadata-sidecar.patch
+          fi
+
+          # Inject TLS hardening flags into the sidecar patch
+          if [ "${{ matrix.tls_hardened }}" = "true" ]; then
+            echo "Injecting TLS hardening flags"
+            PATCH_FILE=~/csi-driver-host-path/deploy/kubernetes-latest/hostpath/csi-snapshot-metadata-sidecar.patch
+            sed -i '/--tls-key=/a\          - "--tls-min-version=VersionTLS13"\n          - "--tls-curve-preferences=X25519,CurveP256"' "$PATCH_FILE"
+            echo "TLS flags injected into sidecar patch:"
+            cat "$PATCH_FILE"
           fi
 
           CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="true" CSI_SNAPSHOT_METADATA_TAG="${{ github.sha }}" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
