@@ -1,0 +1,9 @@
+apiVersion: cbt.storage.k8s.io/v1beta1
+kind: SnapshotMetadataService
+metadata:
+  name: new-sms-require-base-snapshot-for-delta-test
+spec:
+  address: external-snapshot-metadata.csi-driver:6443
+  audience: d1f84679-cf5b-42f0-bad7-5567e86e268b
+  caCert: dGhpcyBpcyB0ZXh0IGNhIGNlcnQK
+  requireBaseSnapshotForDelta: false
