@@ -33,13 +33,6 @@ jobs:
         run: |
           ./scripts/deploy-snapshot-controller.sh deploy
 
-      - name: Configure audience parameter
-        run: |
-          if [ "${{ matrix.audience }}" = "true" ]; then
-            echo "Enabling audience parameter"
-            sed -i 's/# - "--audience=test-backup-client"/- "--audience=test-backup-client"/' deploy/example/csi-driver/csi-driver-with-snapshot-metadata-sidecar.yaml
-          fi
-
       - name: Deploy csi-hostpath-driver
         run: |
           kubectl apply -f ./client/config/crd/cbt.storage.k8s.io_snapshotmetadataservices.yaml
@@ -49,6 +42,12 @@ jobs:
           # Patch deploy-hostpath.sh to allow CSI_SNAPSHOT_METADATA_TAG to override the manifest URLs
           # (upstream hardcodes `false` for csi-snapshot-metadata, preventing env var override)
           sed -i 's/rbac_version "\${BASE_DIR}\/hostpath\/csi-snapshot-metadata-sidecar.patch" csi-snapshot-metadata false/rbac_version "${BASE_DIR}\/hostpath\/csi-snapshot-metadata-sidecar.patch" csi-snapshot-metadata true/g' ~/csi-driver-host-path/deploy/util/deploy-hostpath.sh
+
+          # Inject --audience flag into the hostpath sidecar patch
+          if [ "${{ matrix.audience }}" = "true" ]; then
+            echo "Enabling audience parameter in hostpath sidecar patch"
+            sed -i '/--tls-key=/a\          - "--audience=test-backup-client"' ~/csi-driver-host-path/deploy/kubernetes-latest/hostpath/csi-snapshot-metadata-sidecar.patch
+          fi
 
           CSI_SNAPSHOT_METADATA_REGISTRY="gcr.io/k8s-staging-sig-storage" UPDATE_RBAC_RULES="true" CSI_SNAPSHOT_METADATA_TAG="${{ github.sha }}" SNAPSHOT_METADATA_TESTS=true HOSTPATHPLUGIN_REGISTRY="gcr.io/k8s-staging-sig-storage" HOSTPATHPLUGIN_TAG="canary" ~/csi-driver-host-path/deploy/kubernetes-latest/deploy.sh
 
@@ -197,6 +196,21 @@ jobs:
           else
             echo "Command failed as expected"
           fi
+
+      - name: Verify --audience flag takes priority over SMS CR
+        if: ${{ matrix.audience == true }}
+        run: |
+          echo "Patch SMS CR with wrong audience to verify sidecar ignores it"
+          kubectl patch snapshotmetadataservice hostpath.csi.k8s.io --type='merge' -p '{"spec":{"audience":"wrong-audience"}}'
+
+          echo "Run lister — should fail (token created with wrong audience, sidecar expects cmdline audience)"
+          export failed=0
+          kubectl exec backup-app-client -- /snapshot-metadata-lister -max-results 10 -snapshot snap-1 -starting-offset 0 -namespace default -kubeconfig="" 2>&1 || { export failed=1; true; }
+          if [ $failed -ne 1 ]; then
+            echo "ERROR: lister succeeded despite wrong SMS CR audience — sidecar is reading SMS CR instead of --audience flag"
+            exit 1
+          fi
+          echo "Correctly failed: sidecar used --audience flag, rejected token with wrong SMS CR audience"
 
       - name: Log the status of the failed driver pod
         if: ${{ failure() }}
