@@ -102,7 +102,6 @@ type Runtime struct {
 	CSIConn        *grpc.ClientConn
 	MetricsManager metrics.CSIMetricsManager
 	DriverName     string
-	Audience       string
 }
 
 // initialize obtains the clients and then the CSI driver name.

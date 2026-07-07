@@ -148,6 +148,15 @@ func TestNew(t *testing.T) {
 	})
 }
 
+func TestRuntimeAudienceResolvesToArgs(t *testing.T) {
+	rt := &Runtime{
+		Args: Args{
+			Audience: "test-audience",
+		},
+	}
+	assert.Equal(t, "test-audience", rt.Audience)
+}
+
 func TestWaitTillCSIDriverIsValidated(t *testing.T) {
 	t.Run("probe-error", func(t *testing.T) {
 		th := NewTestHarness().WithMockCSIDriver(t)

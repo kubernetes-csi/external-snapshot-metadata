@@ -29,6 +29,54 @@ import (
 	clientgotesting "k8s.io/client-go/testing"
 )
 
+func TestGetAudienceForDriver(t *testing.T) {
+	t.Run("args-audience-takes-priority-over-cr", func(t *testing.T) {
+		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+		rt := th.Runtime()
+		rt.Args.Audience = "cmdline-audience"
+		s := th.ServerWithRuntime(t, rt)
+
+		retAudience, err := s.getAudienceForDriver(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, "cmdline-audience", retAudience)
+		assert.NotEqual(t, th.Audience, retAudience, "should use Args audience, not SMS CR audience")
+	})
+
+	t.Run("falls-back-to-cr-when-args-empty", func(t *testing.T) {
+		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+		rt := th.Runtime()
+		assert.Empty(t, rt.Args.Audience)
+		s := th.ServerWithRuntime(t, rt)
+
+		retAudience, err := s.getAudienceForDriver(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, th.Audience, retAudience)
+	})
+
+	t.Run("cr-lookup-fails", func(t *testing.T) {
+		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+		rt := th.Runtime()
+		rt.DriverName += "nonexistent"
+		s := th.ServerWithRuntime(t, rt)
+
+		retAudience, err := s.getAudienceForDriver(context.Background())
+		assert.Error(t, err)
+		assert.Empty(t, retAudience)
+	})
+
+	t.Run("args-audience-skips-cr-even-if-cr-would-fail", func(t *testing.T) {
+		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
+		rt := th.Runtime()
+		rt.Args.Audience = "cmdline-audience"
+		rt.DriverName += "nonexistent"
+		s := th.ServerWithRuntime(t, rt)
+
+		retAudience, err := s.getAudienceForDriver(context.Background())
+		assert.NoError(t, err)
+		assert.Equal(t, "cmdline-audience", retAudience)
+	})
+}
+
 func TestAuthenticateAndAuthorize(t *testing.T) {
 	t.Run("crd-get-error", func(t *testing.T) {
 		th := newTestHarness().WithFakeClientAPIs().WithMockCSIDriver(t)
@@ -43,11 +91,11 @@ func TestAuthenticateAndAuthorize(t *testing.T) {
 
 		// set audience in Args
 		testAudience := "test-audience"
-		s.config.Runtime.Audience = testAudience
+		s.config.Runtime.Args.Audience = testAudience
 		retAudience, err = s.getAudienceForDriver(context.Background())
 		assert.NoError(t, err)
 		assert.Equal(t, testAudience, retAudience)
-		s.config.Runtime.Audience = ""
+		s.config.Runtime.Args.Audience = ""
 
 		// fail via authenticateAndAuthorize
 		err = s.authenticateAndAuthorize(context.Background(), "some-token", "some-namespace")
