@@ -38,6 +38,7 @@ import (
 	cbt "github.com/kubernetes-csi/external-snapshot-metadata/client/clientset/versioned"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/runtime"
+	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/internal/tlsconfig"
 )
 
 const (
@@ -66,6 +67,7 @@ type Server struct {
 	grpcServer   *grpc.Server
 	healthServer *health.Server
 	opNumber     int64
+	tlsCfg       *tls.Config
 }
 
 func NewServer(config ServerConfig) (*Server, error) {
@@ -77,19 +79,44 @@ func NewServer(config ServerConfig) (*Server, error) {
 		return nil, errors.New("the certificate watcher/provider for the gRPC server is unset.")
 	}
 
+	minVersion, err := tlsconfig.ParseTLSVersion(config.Runtime.TLSMinVersion)
+	if err != nil {
+		return nil, err
+	}
+
+	cipherSuites, err := tlsconfig.ParseCipherSuites(config.Runtime.TLSCipherSuites)
+	if err != nil {
+		return nil, err
+	}
+
+	curvePrefs, err := tlsconfig.ParseCurvePreferences(config.Runtime.TLSCurvePreferences)
+	if err != nil {
+		return nil, err
+	}
+
+	tlsCfg := &tls.Config{
+		GetCertificate:   config.Certwatcher.GetCertificate,
+		ClientAuth:       tls.NoClientCert,
+		MinVersion:       minVersion,
+		CipherSuites:     cipherSuites,
+		CurvePreferences: curvePrefs,
+	}
+
+	if tlsCfg.MinVersion >= tls.VersionTLS13 && len(tlsCfg.CipherSuites) > 0 {
+		klog.Warning("TLS 1.3+ ignores the configured cipher suites; cipher suite setting has no effect")
+	}
+
+	if config.Runtime.TLSMinVersion != "" || config.Runtime.TLSCipherSuites != "" || config.Runtime.TLSCurvePreferences != "" {
+		klog.Infof("TLS configuration: min-version=%q, cipher-suites=%q, curve-preferences=%q", config.Runtime.TLSMinVersion, config.Runtime.TLSCipherSuites, config.Runtime.TLSCurvePreferences)
+	}
+
 	return &Server{
 		config: config,
 		grpcServer: grpc.NewServer(
-			grpc.Creds(
-				credentials.NewTLS(
-					&tls.Config{
-						GetCertificate: config.Certwatcher.GetCertificate,
-						ClientAuth:     tls.NoClientCert,
-					},
-				),
-			),
+			grpc.Creds(credentials.NewTLS(tlsCfg)),
 		),
 		healthServer: newHealthServer(),
+		tlsCfg:       tlsCfg,
 	}, nil
 }
 

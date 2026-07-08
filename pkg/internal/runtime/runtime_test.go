@@ -37,6 +37,9 @@ func TestNew(t *testing.T) {
 			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour},
 			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour, GRPCPort: 10},
 			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour, GRPCPort: 10, TLSCertFile: "/certFile"},
+			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour, GRPCPort: 10, TLSCertFile: "/c", TLSKeyFile: "/k", TLSMinVersion: "TLS10"},
+			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour, GRPCPort: 10, TLSCertFile: "/c", TLSKeyFile: "/k", TLSCipherSuites: "INVALID"},
+			{CSIAddress: "1.2.3.4", CSITimeout: time.Hour, GRPCPort: 10, TLSCertFile: "/c", TLSKeyFile: "/k", TLSCurvePreferences: "INVALID"},
 		}
 		for i, tc := range invalidArgs {
 			t.Run(fmt.Sprintf("invalid-%d", i), func(t *testing.T) {
