@@ -298,6 +298,10 @@ func (s *sidecarFlagSet) runtimeArgsToArgv(progName string, rta runtime.Args) []
 		argv = append(argv, "-"+flagMetricsPath, rta.MetricsPath)
 	}
 
+	if rta.Audience != "" {
+		argv = append(argv, "-"+flagAudience, rta.Audience)
+	}
+
 	if rta.TLSMinVersion != "" {
 		argv = append(argv, "-"+flagTLSMinVersion, rta.TLSMinVersion)
 	}
