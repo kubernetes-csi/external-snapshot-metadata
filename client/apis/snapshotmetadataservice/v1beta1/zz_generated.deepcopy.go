@@ -93,6 +93,11 @@ func (in *SnapshotMetadataServiceSpec) DeepCopyInto(out *SnapshotMetadataService
 		*out = make([]byte, len(*in))
 		copy(*out, *in)
 	}
+	if in.RequireBaseSnapshotForDelta != nil {
+		in, out := &in.RequireBaseSnapshotForDelta, &out.RequireBaseSnapshotForDelta
+		*out = new(bool)
+		**out = **in
+	}
 	return
 }
 

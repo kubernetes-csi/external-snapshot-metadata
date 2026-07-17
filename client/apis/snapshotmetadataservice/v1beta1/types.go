@@ -34,6 +34,15 @@ type SnapshotMetadataServiceSpec struct {
 	// Certificate authority bundle needed by the client to validate the service.
 	// Required.
 	CACert []byte `json:"caCert"`
+	// Indicates whether the CSI driver requires the base volume snapshot to
+	// exist for computing changed block tracking (CBT) deltas.
+	// If true, backup clients should retain base snapshots.
+	// If false, base snapshots can be safely deleted after obtaining
+	// CBT metadata.
+	// If not specified, no guidance is provided and backup clients should
+	// act at their discretion.
+	// +optional
+	RequireBaseSnapshotForDelta *bool `json:"requireBaseSnapshotForDelta,omitempty"`
 }
 
 // +genclient

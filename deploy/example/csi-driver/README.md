@@ -64,6 +64,7 @@ In this example, we will deploy the snapshot-metadata service alongside a CSI Ho
      address: csi-snapshot-metadata.csi-driver:6443
      caCert: GENERATED_CA_CERT
      audience: 005e2583-91a3-4850-bd47-4bf32990fd00
+     requireBaseSnapshotForDelta: true
    ```
 
    Encode the CA Cert:
@@ -74,6 +75,7 @@ In this example, we will deploy the snapshot-metadata service alongside a CSI Ho
 
    Copy the output and replace `GENERATED_CA_CERT` in the `SnapshotMetadataService` CR.
    Update `spec.address` and `spec.audience` if required.
+   Set `spec.requireBaseSnapshotForDelta` to `true` if the CSI driver requires the base snapshot to exist for computing CBT deltas, or `false` if it does not. If omitted, no guidance is provided and backup clients should act at their discretion.
 
    Create `SnapshotMetadataService` resource using the command below:
 

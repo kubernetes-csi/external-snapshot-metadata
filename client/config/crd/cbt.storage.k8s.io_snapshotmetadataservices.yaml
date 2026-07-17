@@ -64,6 +64,16 @@ spec:
                   Required.
                 format: byte
                 type: string
+              requireBaseSnapshotForDelta:
+                description: |-
+                  Indicates whether the CSI driver requires the base volume snapshot to
+                  exist for computing changed block tracking (CBT) deltas.
+                  If true, backup clients should retain base snapshots.
+                  If false, base snapshots can be safely deleted after obtaining
+                  CBT metadata.
+                  If not specified, no guidance is provided and backup clients should
+                  act at their discretion.
+                type: boolean
             required:
             - address
             - audience
