@@ -18,7 +18,7 @@ package csiclientmocks
 
 // To regenerate the mock client:
 // 1. Install mockgen:
-//    go install github.com/golang/mock/mockgen@v1.6.0
+//    go install go.uber.org/mock/mockgen@v0.6.0
 // 2. Add it to the path:
 //    PATH="$PATH:$(go env GOPATH)/bin"
 // 3. Run go generate github.com/kubernetes-csi/external-snapshot-metadata/pkg/csiclientmocks

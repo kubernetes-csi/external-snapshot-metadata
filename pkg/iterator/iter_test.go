@@ -23,9 +23,9 @@ import (
 	"os"
 	"testing"
 
-	"github.com/golang/mock/gomock"
 	fakesnapshot "github.com/kubernetes-csi/external-snapshotter/client/v8/clientset/versioned/fake"
 	"github.com/stretchr/testify/assert"
+	"go.uber.org/mock/gomock"
 	v1 "k8s.io/api/core/v1"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/kubernetes/fake"
