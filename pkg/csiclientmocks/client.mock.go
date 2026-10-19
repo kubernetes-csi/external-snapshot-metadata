@@ -9,7 +9,7 @@ import (
 	reflect "reflect"
 
 	csi "github.com/container-storage-interface/spec/lib/go/csi"
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 	grpc "google.golang.org/grpc"
 	metadata "google.golang.org/grpc/metadata"
 )
