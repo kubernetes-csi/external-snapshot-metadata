@@ -30,7 +30,9 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
+	"k8s.io/apimachinery/pkg/runtime/schema"
 	clientgotesting "k8s.io/client-go/testing"
 
 	"github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
@@ -352,14 +354,14 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
 				if ga.GetName() == "snap-doesnt-exist" {
-					return true, nil, fmt.Errorf("does not exist")
+					return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "snapshot.storage.k8s.io", Resource: "volumesnapshots"}, "snap-doesnt-exist")
 				}
 				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
 				return true, vs, nil
 			},
 			expectError:     true,
-			expStatusCode:   codes.Unavailable,
-			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotFmt, "test-ns", "snap-doesnt-exist", "does not exist"),
+			expStatusCode:   codes.NotFound,
+			expStatusMsgPat: fmt.Sprintf(msgNotFoundVolumeSnapshotFmt, "test-ns", "snap-doesnt-exist"),
 		},
 		{
 			// VolumeSnapshot resource with TargetSnapshotName is not ready
@@ -421,14 +423,14 @@ func TestConvertToCSIGetMetadataDeltaRequest(t *testing.T) {
 			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
 				ga := action.(clientgotesting.GetAction)
 				if ga.GetName() == th.ContentNameFromSnapshot("snap-content-doesnt-exist") {
-					return true, nil, fmt.Errorf("does not exist")
+					return true, nil, apierrors.NewNotFound(schema.GroupResource{Group: "snapshot.storage.k8s.io", Resource: "volumesnapshotcontents"}, th.ContentNameFromSnapshot("snap-content-doesnt-exist"))
 				}
 				vsc := th.VolumeSnapshotContent(ga.GetName(), th.DriverName)
 				return true, vsc, nil
 			},
 			expectError:     true,
-			expStatusCode:   codes.Unavailable,
-			expStatusMsgPat: fmt.Sprintf(msgUnavailableFailedToGetVolumeSnapshotContentFmt, th.ContentNameFromSnapshot("snap-content-doesnt-exist"), "does not exist"),
+			expStatusCode:   codes.NotFound,
+			expStatusMsgPat: fmt.Sprintf(msgNotFoundVolumeSnapshotContentFmt, th.ContentNameFromSnapshot("snap-content-doesnt-exist")),
 		},
 		{
 			// VolumeSnapshotContent associated with target snapshot is not ready
