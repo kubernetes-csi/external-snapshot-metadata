@@ -8,7 +8,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	gomock "github.com/golang/mock/gomock"
+	gomock "go.uber.org/mock/gomock"
 	api "github.com/kubernetes-csi/external-snapshot-metadata/pkg/api"
 	grpc "google.golang.org/grpc"
 	metadata "google.golang.org/grpc/metadata"
