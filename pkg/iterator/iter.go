@@ -449,12 +449,12 @@ func (iter *iterator) getVolumeSnapshot(ctx context.Context, namespace, vsName s
 	}
 
 	// Check ready-to-use if set, otherwise ignore.
-	if vs.Status.ReadyToUse != nil && !*vs.Status.ReadyToUse {
+	if vs.Status != nil && vs.Status.ReadyToUse != nil && !*vs.Status.ReadyToUse {
 		return nil, fmt.Errorf("VolumeSnapshot %s/%s is not yet ready", namespace, vsName)
 	}
 
 	// The BoundVolumeSnapshotContentName must be set.
-	if vs.Status.BoundVolumeSnapshotContentName == nil {
+	if vs.Status == nil || vs.Status.BoundVolumeSnapshotContentName == nil {
 		return nil, fmt.Errorf("VolumeSnapshot %s/%s boundVolumeSnapshotContentName not set", namespace, vsName)
 	}
 
@@ -475,12 +475,12 @@ func (iter *iterator) getVolumeSnapshotContent(ctx context.Context, vs *snapshot
 	}
 
 	// Check ready-to-use if set, otherwise ignore.
-	if vsc.Status.ReadyToUse != nil && !*vsc.Status.ReadyToUse {
+	if vsc.Status != nil && vsc.Status.ReadyToUse != nil && !*vsc.Status.ReadyToUse {
 		return nil, fmt.Errorf("VolumeSnapshotContent(%s) is not yet ready", vscName)
 	}
 
 	// The SnapshotHandle must be set.
-	if vsc.Status.SnapshotHandle == nil {
+	if vsc.Status == nil || vsc.Status.SnapshotHandle == nil {
 		return nil, fmt.Errorf("VolumeSnapshotContent(%s) snapshot handle not set", vscName)
 	}
 
