@@ -930,6 +930,63 @@ func TestGetChangedBlocks(t *testing.T) {
 func TestGetPrevSnapshotID(t *testing.T) {
 	errTest := errors.New("test-error")
 
+	for _, tc := range []struct {
+		name          string
+		missingStatus string
+		wantError     string
+	}{
+		{
+			name:          "snapshot status not set",
+			missingStatus: "snapshot",
+			wantError:     "boundVolumeSnapshotContentName not set",
+		},
+		{
+			name:          "content status not set",
+			missingStatus: "content",
+			wantError:     "snapshot handle not set",
+		},
+		{
+			name: "ready-to-use not set",
+		},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			th := newTestHarness()
+			th.SnapshotName = th.PrevSnapshotName
+			vs, vsc := th.FakeVS()
+			switch tc.missingStatus {
+			case "snapshot":
+				vs.Status = nil
+			case "content":
+				vsc.Status = nil
+			}
+
+			args := th.Args()
+			args.SnapshotName = "current-snapshot"
+			args.SnapshotClient = fakesnapshot.NewSimpleClientset(vs, vsc)
+			if !assert.NoError(t, args.Validate()) {
+				return
+			}
+
+			// Use the real helpers that resolve PrevSnapshotName to a CSI handle.
+			iter := newIterator(args)
+			var snapshotID string
+			var err error
+			if !assert.NotPanics(t, func() {
+				snapshotID, err = iter.getPrevSnapshotID(context.Background())
+			}) {
+				return
+			}
+
+			if tc.wantError != "" {
+				assert.ErrorContains(t, err, tc.wantError)
+				assert.Empty(t, snapshotID)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, th.PrevSnapshotHandle, snapshotID)
+			}
+		})
+	}
+
 	t.Run("success", func(t *testing.T) {
 		th := newTestHarness()
 		vs, vsc := th.FakeVS()
