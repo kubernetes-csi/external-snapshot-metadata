@@ -16,12 +16,13 @@ limitations under the License.
 
 package csiclientmocks
 
-// To regenerate the mock client:
+// To regenerate the mock client (mockgen version must match go.uber.org/mock in go.mod):
 // 1. Install mockgen:
-//    go install go.uber.org/mock/mockgen@v0.6.0
+//    go install go.uber.org/mock/mockgen@$(go list -m -f '{{.Version}}' go.uber.org/mock)
 // 2. Add it to the path:
 //    PATH="$PATH:$(go env GOPATH)/bin"
 // 3. Run go generate github.com/kubernetes-csi/external-snapshot-metadata/pkg/csiclientmocks
 // 4. Check in the generated files.
+// Or run: make test-mocks
 
 //go:generate mockgen -package=csiclientmocks -destination=client.mock.go github.com/container-storage-interface/spec/lib/go/csi SnapshotMetadataClient,SnapshotMetadata_GetMetadataAllocatedClient,SnapshotMetadata_GetMetadataDeltaClient
