@@ -702,7 +702,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
 		defer mockController.Finish()
 
-		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient(mockController)
+		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient[api.GetMetadataAllocatedResponse](mockController)
 
 		for _, resp := range responses {
 			mockStream.EXPECT().Recv().Return(resp, nil)
@@ -727,7 +727,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
 		defer mockController.Finish()
 
-		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient(mockController)
+		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient[api.GetMetadataAllocatedResponse](mockController)
 
 		for _, resp := range responses {
 			mockStream.EXPECT().Recv().Return(resp, nil)
@@ -753,7 +753,7 @@ func TestGetAllocatedBlocks(t *testing.T) {
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
 		defer mockController.Finish()
 
-		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient(mockController)
+		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataAllocatedClient[api.GetMetadataAllocatedResponse](mockController)
 
 		mockStream.EXPECT().Recv().Return(responses[0], nil) // one record only
 		th.RetSnapshotMetadataIteratorRecord = ErrCancelled  // then abort
@@ -852,7 +852,7 @@ func TestGetChangedBlocks(t *testing.T) {
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
 		defer mockController.Finish()
 
-		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient(mockController)
+		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient[api.GetMetadataDeltaResponse](mockController)
 
 		for _, resp := range responses {
 			mockStream.EXPECT().Recv().Return(resp, nil)
@@ -881,7 +881,7 @@ func TestGetChangedBlocks(t *testing.T) {
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
 		defer mockController.Finish()
 
-		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient(mockController)
+		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient[api.GetMetadataDeltaResponse](mockController)
 
 		for _, resp := range responses {
 			mockStream.EXPECT().Recv().Return(resp, nil)
@@ -911,7 +911,7 @@ func TestGetChangedBlocks(t *testing.T) {
 		mockClient := k8sclientmocks.NewMockSnapshotMetadataClient(mockController)
 		defer mockController.Finish()
 
-		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient(mockController)
+		mockStream := k8sclientmocks.NewMockSnapshotMetadata_GetMetadataDeltaClient[api.GetMetadataDeltaResponse](mockController)
 
 		mockStream.EXPECT().Recv().Return(responses[0], nil) // one record only
 		th.RetSnapshotMetadataIteratorRecord = ErrCancelled  // then abort
