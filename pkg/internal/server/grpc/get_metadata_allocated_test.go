@@ -25,11 +25,13 @@ import (
 	"time"
 
 	"github.com/container-storage-interface/spec/lib/go/csi"
+	snapshotv1 "github.com/kubernetes-csi/external-snapshotter/client/v8/apis/volumesnapshot/v1"
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
+	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	apiruntime "k8s.io/apimachinery/pkg/runtime"
 	clientgotesting "k8s.io/client-go/testing"
 
@@ -311,6 +313,24 @@ func TestConvertToCSIGetMetadataAllocatedRequest(t *testing.T) {
 		},
 		{
 			// VolumeSnapshot resource with SnapshotName doesn't exist
+			name: "snapshot-not-found-error",
+			apiRequest: &api.GetMetadataAllocatedRequest{
+				SnapshotName:   "snap-doesnt-exist",
+				Namespace:      "test-ns",
+				SecurityToken:  "token",
+				StartingOffset: 0,
+				MaxResults:     256,
+			},
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				return true, nil, apierrors.NewNotFound(snapshotv1.Resource("volumesnapshots"), ga.GetName())
+			},
+			expectError:     true,
+			expStatusCode:   codes.NotFound,
+			expStatusMsgPat: fmt.Sprintf(msgNotFoundVolumeSnapshotFmt, "test-ns", "snap-doesnt-exist"),
+		},
+		{
+			// VolumeSnapshot resource with SnapshotName cannot be fetched
 			name: "snapshot-get-error",
 			apiRequest: &api.GetMetadataAllocatedRequest{
 				SnapshotName:   "snap-doesnt-exist",
@@ -368,6 +388,29 @@ func TestConvertToCSIGetMetadataAllocatedRequest(t *testing.T) {
 		},
 		{
 			// VolumeSnapshotContent resource associated with snapshot doesn't exist
+			name: "snapshot-content-not-found-error",
+			apiRequest: &api.GetMetadataAllocatedRequest{
+				SnapshotName:   "snap-content-doesnt-exist",
+				Namespace:      "test-ns",
+				SecurityToken:  "token",
+				StartingOffset: 0,
+				MaxResults:     256,
+			},
+			fakeVolumeSnapshot: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				vs := th.VolumeSnapshot(ga.GetName(), ga.GetNamespace())
+				return true, vs, nil
+			},
+			fakeVolumeSnapshotContent: func(action clientgotesting.Action) (handled bool, ret apiruntime.Object, err error) {
+				ga := action.(clientgotesting.GetAction)
+				return true, nil, apierrors.NewNotFound(snapshotv1.Resource("volumesnapshotcontents"), ga.GetName())
+			},
+			expectError:     true,
+			expStatusCode:   codes.NotFound,
+			expStatusMsgPat: fmt.Sprintf(msgNotFoundVolumeSnapshotContentFmt, th.ContentNameFromSnapshot("snap-content-doesnt-exist")),
+		},
+		{
+			// VolumeSnapshotContent resource associated with snapshot cannot be fetched
 			name: "snapshot-content-get-error",
 			apiRequest: &api.GetMetadataAllocatedRequest{
 				SnapshotName:   "snap-content-doesnt-exist",

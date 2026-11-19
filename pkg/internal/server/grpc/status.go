@@ -40,6 +40,11 @@ const (
 	msgInvalidArgumentTargetSnapshotNameMissing = "targetSnapshotName cannot be empty"
 	msgInvalidArgumentSnaphotDriverInvalidFmt   = "VolumeSnapshot '%s' does not belong to the CSI driver '%s'"
 
+	msgNotFoundVolumeSnapshot           = "VolumeSnapshot not found"
+	msgNotFoundVolumeSnapshotFmt        = msgNotFoundVolumeSnapshot + " '%s/%s'"
+	msgNotFoundVolumeSnapshotContent    = "VolumeSnapshotContent not found"
+	msgNotFoundVolumeSnapshotContentFmt = msgNotFoundVolumeSnapshotContent + " '%s'"
+
 	msgPermissionDeniedPrefix = "user does not have permissions to perform the operation"
 	msgPermissionDeniedFmt    = msgPermissionDeniedPrefix + ": %s"
 
