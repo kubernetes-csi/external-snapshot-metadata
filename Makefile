@@ -43,6 +43,23 @@ CMDS=csi-snapshot-metadata
 
 include release-tools/build.make
 
+# Keep mockgen in lockstep with the go.uber.org/mock module in go.mod.
+MOCKGEN_VERSION := $(shell go list -m -f '{{.Version}}' go.uber.org/mock)
+
+# Fail CI if gomock clients are stale (interface changed without go generate).
+.PHONY: test-mocks
+test: test-mocks
+test-mocks:
+	@ echo; echo "### $@:"
+	@ go install go.uber.org/mock/mockgen@$(MOCKGEN_VERSION)
+	@ PATH="$$(go env GOPATH)/bin:$$PATH" go generate ./pkg/csiclientmocks ./pkg/k8sclientmocks
+	@ if ! git diff --exit-code -- pkg/csiclientmocks/client.mock.go pkg/k8sclientmocks/client.mock.go; then \
+		echo "ERROR: generated mocks are out of date; run:"; \
+		echo "  go install go.uber.org/mock/mockgen@$(MOCKGEN_VERSION)"; \
+		echo "  PATH=\"\$$(go env GOPATH)/bin:\$$PATH\" go generate ./pkg/csiclientmocks ./pkg/k8sclientmocks"; \
+		exit 1; \
+	fi
+
 .PHONY: examples
 examples:
 	mkdir -p bin
