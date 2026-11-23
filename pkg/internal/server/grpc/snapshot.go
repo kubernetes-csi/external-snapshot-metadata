@@ -70,6 +70,9 @@ func (s *Server) getVolumeSnapshot(ctx context.Context, namespace, vsName string
 		}
 
 		klog.FromContext(ctx).Error(err, msgUnavailableFailedToGetVolumeSnapshot, "vsName", vsName)
+		if apierrors.IsNotFound(err) {
+			return nil, status.Errorf(codes.NotFound, msgNotFoundVolumeSnapshotFmt, namespace, vsName)
+		}
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotFmt, namespace, vsName, err)
 	}
 
@@ -95,6 +98,9 @@ func (s *Server) getVolumeSnapshotContent(ctx context.Context, vscName, vsName s
 		}
 
 		klog.FromContext(ctx).Error(err, msgUnavailableFailedToGetVolumeSnapshotContent, "vscName", vscName, "vsName", vsName)
+		if apierrors.IsNotFound(err) {
+			return nil, status.Errorf(codes.NotFound, msgNotFoundVolumeSnapshotContentFmt, vscName)
+		}
 		return nil, status.Errorf(codes.Unavailable, msgUnavailableFailedToGetVolumeSnapshotContentFmt, vscName, err)
 	}
 
